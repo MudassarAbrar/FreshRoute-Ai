@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { fetchAiUsage } from "@/lib/db"
+import { subscribeToAiUsage, type AiUsageLog } from "@/lib/firestore"
 import { refreshAiMode } from "@/store/director"
 import { ModeBadge } from "@/components/SettingsSheet"
 import { useApp } from "@/store/useApp"
@@ -10,15 +10,16 @@ import { cn } from "@/lib/utils"
 export default function AdminSettingsPage() {
   const aiMode = useApp((s) => s.aiMode)
   const aiError = useApp((s) => s.aiError)
-  const [aiLogs, setAiLogs] = useState<any[]>([])
+  const [aiLogs, setAiLogs] = useState<AiUsageLog[]>([])
   const [rechecking, setRechecking] = useState(false)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetchAiUsage(30)
-      .then(setAiLogs)
-      .catch(() => {})
-      .finally(() => setLoading(false))
+    const unsubscribe = subscribeToAiUsage(30, (logs) => {
+      setAiLogs(logs)
+      setLoading(false)
+    })
+    return () => unsubscribe()
   }, [])
 
   const recheck = async () => {
@@ -83,7 +84,13 @@ export default function AdminSettingsPage() {
 
       {/* AI Usage Logs */}
       <div className="rounded-2xl border border-border bg-card p-5">
-        <h2 className="mb-3 text-[15px] font-extrabold text-foreground">Recent AI Usage</h2>
+        <div className="mb-3 flex items-center gap-2">
+          <Activity className="h-5 w-5 text-primary-600" />
+          <h2 className="text-[15px] font-extrabold text-foreground">Recent AI Usage</h2>
+          <span className="ml-auto rounded-full bg-good/15 px-2 py-0.5 text-[10px] font-bold text-good">
+            Firestore real-time
+          </span>
+        </div>
         {loading ? (
           <div className="flex justify-center py-6"><Loader2 className="h-6 w-6 animate-spin text-primary-600" /></div>
         ) : aiLogs.length === 0 ? (
@@ -101,9 +108,9 @@ export default function AdminSettingsPage() {
                 </tr>
               </thead>
               <tbody>
-                {aiLogs.map((log: any) => (
+                {aiLogs.map((log) => (
                   <tr key={log.id} className="border-b border-border last:border-b-0">
-                    <td className="px-3 py-2 text-[12px] text-muted-foreground">{new Date(log.created_at).toLocaleString()}</td>
+                    <td className="px-3 py-2 text-[12px] text-muted-foreground">{new Date(log.createdAt).toLocaleString()}</td>
                     <td className="px-3 py-2 text-[12px] font-bold text-foreground">{log.action}</td>
                     <td className="px-3 py-2 text-[12px] text-foreground">{log.model}</td>
                     <td className="px-3 py-2">
@@ -111,7 +118,7 @@ export default function AdminSettingsPage() {
                         log.status === "ok" ? "bg-good/15 text-good" : "bg-risk/15 text-risk"
                       )}>{log.status.toUpperCase()}</span>
                     </td>
-                    <td className="px-3 py-2 text-[12px] text-muted-foreground">{log.latency_ms}ms</td>
+                    <td className="px-3 py-2 text-[12px] text-muted-foreground">{log.latencyMs}ms</td>
                   </tr>
                 ))}
               </tbody>

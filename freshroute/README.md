@@ -163,6 +163,7 @@ Visible in user profile and admin dashboard — builds trust between farmers and
 |---|---|
 | **Supabase** | Auth, PostgreSQL database, storage, Edge Functions |
 | **Google Gemini AI** | Text extraction, vision analysis, conversational chat |
+| **Google Cloud Firestore** | Real-time AI usage logging and live admin telemetry |
 | **Deno (Edge Function)** | Server-side Gemini API proxy with JWT verification |
 
 ### Development Tools
@@ -220,6 +221,7 @@ Visible in user profile and admin dashboard — builds trust between farmers and
 4. **Server-Side Key Security** — Gemini API key never exposed to the browser
 5. **Row-Level Security** — Every database table protected by Supabase RLS
 6. **Audit Trail** — All actions logged with timestamps and actors
+7. **Google Cloud Firestore** — Mirrors AI usage events in real-time for live admin monitoring
 
 ---
 
@@ -289,6 +291,37 @@ supabase functions deploy gemini-proxy
 | **Voice input** | Mic icon → speak → transcript fills input (Chrome/Edge) |
 | **Admin portal** | `/admin` shows users, orders, analytics, AI usage |
 
+### Step 7 — Firestore *(Optional, for real-time AI monitoring)*
+
+FreshRoute uses **Google Cloud Firestore** alongside Supabase for real-time AI usage telemetry:
+
+1. Create a Firebase project at [console.firebase.google.com](https://console.firebase.google.com)
+2. Enable **Firestore Database** (start in test mode for development)
+3. Add a **Web app** and copy the config values into `.env.local`:
+   ```env
+   VITE_FIREBASE_API_KEY=<your-key>
+   VITE_FIREBASE_AUTH_DOMAIN=<project>.firebaseapp.com
+   VITE_FIREBASE_PROJECT_ID=<project-id>
+   VITE_FIREBASE_STORAGE_BUCKET=<project>.appspot.com
+   VITE_FIREBASE_MESSAGING_SENDER_ID=<sender-id>
+   VITE_FIREBASE_APP_ID=<app-id>
+   ```
+4. Deploy these Firestore security rules:
+   ```javascript
+   rules_version = '2';
+   service cloud.firestore {
+     match /databases/{database}/documents {
+       match /ai_usage/{doc} {
+         allow read: if true;
+         allow create: if request.auth != null;
+         allow update, delete: if false;
+       }
+     }
+   }
+   ```
+
+Every Gemini call now writes a log entry to Firestore, and the admin dashboard at `/admin/settings` shows live-updating AI usage via Firestore `onSnapshot()`.
+
 ---
 
 ## 📁 Project Structure
@@ -337,6 +370,8 @@ freshroute/
 │   │   ├── copy.ts                  # Copy-to-clipboard utility
 │   │   ├── db.ts                    # Database operations layer
 │   │   ├── engine.ts                # Pricing/spoilage/scenario calculation engine
+│   │   ├── firebase.ts              # Firebase app init + Firestore client
+│   │   ├── firestore.ts             # Firestore AI usage logging + real-time subscriptions
 │   │   ├── format.ts                # Currency (PKR), time, ID formatting
 │   │   ├── gemini.ts                # Gemini AI client (text, vision, chat)
 │   │   ├── supabase.ts              # Supabase client initialization
@@ -620,6 +655,14 @@ Full bilingual support via `src/i18n.ts` dictionary:
 |---|---|---|
 | `VITE_SUPABASE_URL` | ✅ | Supabase project URL |
 | `VITE_SUPABASE_ANON_KEY` | ✅ | Supabase anon/public key |
+| `VITE_FIREBASE_API_KEY` | ⚠️ | Firebase API key (for real-time AI logs) |
+| `VITE_FIREBASE_AUTH_DOMAIN` | ⚠️ | Firebase auth domain |
+| `VITE_FIREBASE_PROJECT_ID` | ⚠️ | Firebase project ID |
+| `VITE_FIREBASE_STORAGE_BUCKET` | ⚠️ | Firebase storage bucket |
+| `VITE_FIREBASE_MESSAGING_SENDER_ID` | ⚠️ | Firebase messaging sender ID |
+| `VITE_FIREBASE_APP_ID` | ⚠️ | Firebase app ID |
+
+> ⚠️ Firebase vars are optional — the app works without them, but the admin AI monitoring dashboard won't show real-time updates.
 
 ### What's Real vs. Demo
 

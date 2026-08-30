@@ -1,5 +1,6 @@
 import { CROP_ALIASES } from "@/data/market"
 import { supabase } from "@/lib/supabase"
+import { logAiUsageToFirestore } from "@/lib/firestore"
 import type { Grade, VisionResult } from "@/types"
 import type { Lang } from "@/i18n"
 
@@ -27,11 +28,26 @@ export function consumeAiError(): string | null {
 type ProxyData = { ok?: boolean; error?: string; [k: string]: unknown }
 
 async function callProxy(body: Record<string, unknown>): Promise<ProxyData> {
+  const started = Date.now()
   const { data, error } = await supabase.functions.invoke("gemini-proxy", { body })
+  const latencyMs = Date.now() - started
+
+  // Log to Firestore (non-blocking, fire-and-forget)
+  const action = String(body.action ?? "unknown")
+  const proxyData = (data ?? { ok: false, error: "Empty response from AI proxy" }) as ProxyData
+  const status: "ok" | "error" = error || !proxyData.ok ? "error" : "ok"
+  void logAiUsageToFirestore({
+    action,
+    model: (proxyData.model as string) ?? "gemini-flash-latest",
+    status,
+    error: status === "error" ? (error?.message ?? proxyData.error ?? "unknown") : undefined,
+    latencyMs,
+  })
+
   if (error) {
     return { ok: false, error: `Could not reach the AI proxy — ${error.message || "network error"}` }
   }
-  return (data ?? { ok: false, error: "Empty response from AI proxy" }) as ProxyData
+  return proxyData
 }
 
 export async function checkAiStatus(): Promise<AiStatus> {
