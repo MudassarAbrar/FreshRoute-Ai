@@ -1,0 +1,12 @@
+schema_version: 1
+module_path: frontend_app/chat_ui
+title: Chat Conversation UI
+scope:
+    - freshroute/src/components/ChatBody.tsx
+    - freshroute/src/components/ChatHeader.tsx
+    - freshroute/src/components/ChatInput.tsx
+    - freshroute/src/components/QuickReplies.tsx
+source_files: []
+depends_on: []
+related_to:
+    - path: frontend_app/app_shell

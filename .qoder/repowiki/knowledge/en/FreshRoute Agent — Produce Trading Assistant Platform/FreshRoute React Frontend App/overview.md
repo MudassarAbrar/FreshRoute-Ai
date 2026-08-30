@@ -1,0 +1,1 @@
+Vite + React frontend that composes chat, phone-frame shell, and overlay panels around a shared Zustand store to drive the FreshRoute trading assistant UI.

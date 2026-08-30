@@ -1,0 +1,1 @@
+React functional components with TypeScript, Tailwind CSS (custom design tokens like `bg-primary-900`, `rounded-bubble`, `shadow-card`), Lucide icons, and Zustand via `@/store/useApp` for global UI state; Supabase configuration flag `backendConfigured` from `@/lib/supabase` gates backend-dependent UI.

@@ -1,0 +1,1 @@
+Reusable React components that compose the FreshRoute app shell, chat bubbles, and overlay panels (audit drawer, photo picker, settings sheet, price ticker) driven by a shared Zustand store.

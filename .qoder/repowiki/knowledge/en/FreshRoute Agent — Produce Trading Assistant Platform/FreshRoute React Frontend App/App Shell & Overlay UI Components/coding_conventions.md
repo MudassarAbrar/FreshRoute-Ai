@@ -1,0 +1,5 @@
+- Overlay panels use an absolute full-screen backdrop combined with a slide-in/out panel controlled by a boolean or string state from `useApp` (e.g. `drawerAudit`, `setSheet('none')`).
+- Conditional styling across multiple states is expressed via the `cn` utility chaining semantic class names (e.g. actor-based colors in AuditDrawer, mode-based badges in SettingsSheet).
+- Components consume only the slice of Zustand state they need through selector functions passed to `useApp((s) => s.xxx)` rather than subscribing to the whole store.
+- Time values are formatted centrally via the `clock` helper from `@/lib/format` instead of ad-hoc date formatting.
+- Iconography is consistently sourced from `lucide-react` and paired with small rounded containers using consistent sizing patterns (e.g. `h-4 w-4` or `h-5 w-5`).

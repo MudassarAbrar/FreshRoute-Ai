@@ -1,0 +1,3 @@
+- Components import each other using the `@/` path alias (e.g. `@/components/*`, `@/store/*`, `@/lib/*`) instead of relative paths.
+- Cross-component shared state is read via Zustand selectors in `useApp` rather than prop drilling or local component state.
+- UI primitives are built from shadcn-style `ui/button.tsx` and `ui/card.tsx` composited with `class-variance-authority` and `tailwind-merge`.

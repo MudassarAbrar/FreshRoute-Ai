@@ -1,0 +1,1 @@
+Vite + React 19 + TypeScript SPA with Tailwind CSS, Zustand for global state, Supabase JS client for persistence, Google Generative AI (@google/genai) for multimodal vision/text, and an Edge Function proxy for Gemini access.

@@ -1,0 +1,91 @@
+@import url("https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu:wght@400;600;700&display=swap");
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* FreshRoute brand — deep agricultural green */
+    --background: 44 38% 94%;
+    --foreground: 160 30% 10%;
+    --card: 0 0% 100%;
+    --card-foreground: 160 30% 10%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 160 30% 10%;
+    --primary: 152 65% 25%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 150 40% 93%;
+    --secondary-foreground: 152 65% 20%;
+    --muted: 44 25% 90%;
+    --muted-foreground: 158 10% 40%;
+    --accent: 36 95% 50%;
+    --accent-foreground: 30 80% 12%;
+    --destructive: 4 80% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 44 22% 86%;
+    --input: 44 22% 82%;
+    --ring: 152 65% 30%;
+    --radius: 0.9rem;
+
+    /* Chat surface */
+    --chat-bg: 44 42% 92%;
+    --bubble-user: 152 60% 27%;
+    --tick: 148 55% 45%;
+
+    /* Status */
+    --good: 145 60% 38%;
+    --warn: 36 92% 44%;
+    --risk: 8 75% 52%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-feature-settings: "tnum" 1;
+  }
+}
+
+@layer utilities {
+  /* WhatsApp-style doodle wallpaper: leaf, sun, crate, truck, droplet, price-tag */
+  .chat-pattern {
+    background-color: hsl(var(--chat-bg));
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='190' height='190' viewBox='0 0 190 190'%3E%3Cg fill='none' stroke='%231d4a32' stroke-opacity='0.06' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M18 34 Q18 20 32 20 Q32 34 18 34 Z M25 34 L25 42'/%3E%3Ccircle cx='96' cy='30' r='7'/%3E%3Cpath d='M96 16 v5 M96 39 v5 M82 30 h5 M105 30 h5 M86 20 l3.5 3.5 M103 40 l-3.5 -3.5 M106 20 l-3.5 3.5 M89 40 l3.5 -3.5'/%3E%3Crect x='150' y='18' width='22' height='16' rx='2'/%3E%3Cpath d='M150 26 h22 M161 18 v16'/%3E%3Crect x='20' y='90' width='24' height='15' rx='2'/%3E%3Ccircle cx='26' cy='109' r='3'/%3E%3Ccircle cx='38' cy='109' r='3'/%3E%3Cpath d='M28 90 v-5 h8 v5'/%3E%3Cpath d='M96 84 Q88 96 96 106 Q104 96 96 84 Z'/%3E%3Cpath d='M150 82 l12 12 M162 82 l-12 12'/%3E%3Cpath d='M154 148 h16 l4 6 v8 h-24 v-8 Z'/%3E%3Ccircle cx='158' cy='166' r='3'/%3E%3Ccircle cx='170' cy='166' r='3'/%3E%3Cpath d='M40 150 v14 M33 157 h14 M33 150 l7 7 7 -7'/%3E%3Cpath d='M86 152 q8 -8 16 0 q8 8 16 0'/%3E%3C/g%3E%3C/svg%3E");
+  }
+
+  .font-urdu {
+    font-family: "Noto Nastaliq Urdu", serif;
+    line-height: 2.1;
+  }
+
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(152 20% 70% / 0.5) transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 5px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: hsl(152 20% 60% / 0.4);
+    border-radius: 99px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}

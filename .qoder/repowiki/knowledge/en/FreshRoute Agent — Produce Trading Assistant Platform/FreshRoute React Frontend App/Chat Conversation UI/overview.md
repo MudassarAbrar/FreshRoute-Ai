@@ -1,0 +1,1 @@
+React components that render the chat conversation header, message body with typed agent/user bubbles and cards, input bar with text/voice/photo actions, and contextual quick-reply buttons.

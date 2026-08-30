@@ -1,0 +1,1 @@
+React functional components with hooks (`useState`, `useEffect`, `useRef`), Tailwind CSS for styling, Lucide icons, and Zustand-style selectors via the custom `useApp` hook.

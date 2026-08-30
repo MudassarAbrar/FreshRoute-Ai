@@ -1,0 +1,4 @@
+- User-facing state is centralized in Zustand stores under `src/store/` and consumed by components rather than passed as props.
+- External integrations (Gemini, Supabase) are isolated in dedicated `lib/` modules so UI components never call SDKs directly.
+- UI primitives are built as small reusable components under `src/components/ui/` and composed into domain-specific cards under `src/components/cards/`.
+- Supabase schema changes are versioned through SQL migration files in `supabase/migrations/` instead of ad-hoc table edits.
