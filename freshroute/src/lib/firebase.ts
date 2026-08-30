@@ -1,12 +1,15 @@
 /**
- * Firebase / Firestore client for FreshRoute.
- * Used alongside Supabase to provide real-time AI usage telemetry
- * to the admin dashboard via Firestore listeners.
+ * Firebase client for FreshRoute.
+ *
+ * Provides two Google Cloud integrations:
+ * 1. **Firebase Auth** — Email/Password + Google Sign-in (mirrors Supabase auth)
+ * 2. **Cloud Firestore** — Real-time AI usage telemetry for admin dashboard
  *
  * All configuration lives in VITE_FIREBASE_* env variables.
  * Supabase remains the source of truth for users, orders, and transactions.
  */
 import { initializeApp } from "firebase/app"
+import { getAuth } from "firebase/auth"
 import { getFirestore } from "firebase/firestore"
 
 const firebaseConfig = {
@@ -19,4 +22,5 @@ const firebaseConfig = {
 }
 
 export const firebaseApp = initializeApp(firebaseConfig)
+export const firebaseAuth = getAuth(firebaseApp)
 export const firestoreDb = getFirestore(firebaseApp)

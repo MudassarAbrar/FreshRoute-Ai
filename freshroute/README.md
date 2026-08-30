@@ -12,6 +12,7 @@
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3.4-06B6D4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com)
 [![Supabase](https://img.shields.io/badge/Supabase-Postgres_17-3ECF8E?logo=supabase&logoColor=white)](https://supabase.com)
 [![Google Gemini](https://img.shields.io/badge/Google_Gemini-AI_Vision-4285F4?logo=google&logoColor=white)](https://ai.google.dev)
+[![Firebase Auth](https://img.shields.io/badge/Firebase-Auth_+_Firestore-FFCA28?logo=firebase&logoColor=white)](https://firebase.google.com)
 [![Zustand](https://img.shields.io/badge/Zustand-State-FF6B6B)](https://github.com/pmndrs/zustand)
 [![Recharts](https://img.shields.io/badge/Recharts-Charts-FF8C00)](https://recharts.org)
 [![License](https://img.shields.io/badge/License-MIT-green)](./LICENSE)
@@ -161,9 +162,10 @@ Visible in user profile and admin dashboard — builds trust between farmers and
 
 | Technology | Purpose |
 |---|---|
-| **Supabase** | Auth, PostgreSQL database, storage, Edge Functions |
+| **Supabase** | PostgreSQL database, storage, Edge Functions |
+| **Firebase Auth** | Email/Password + Google Sign-in authentication |
 | **Google Gemini AI** | Text extraction, vision analysis, conversational chat |
-| **Google Cloud Firestore** | Real-time AI usage logging and live admin telemetry |
+| **Google Cloud Firestore** | Real-time AI usage logging, user profiles, live admin telemetry |
 | **Deno (Edge Function)** | Server-side Gemini API proxy with JWT verification |
 
 ### Development Tools
@@ -291,18 +293,22 @@ supabase functions deploy gemini-proxy
 | **Voice input** | Mic icon → speak → transcript fills input (Chrome/Edge) |
 | **Admin portal** | `/admin` shows users, orders, analytics, AI usage |
 
-### Step 7 — Firestore *(Optional, for real-time AI monitoring)*
+### Step 7 — Firebase Auth + Firestore *(Google Cloud integration)*
 
-FreshRoute uses **Google Cloud Firestore** alongside Supabase for real-time AI usage telemetry:
+FreshRoute uses **Firebase Auth** for authentication and **Cloud Firestore** for real-time AI telemetry:
 
-1. Create a Firebase project at [console.firebase.google.com](https://console.firebase.google.com)
-2. Enable **Firestore Database** (start in test mode for development)
-3. Add a **Web app** and copy the config values into `.env.local`:
+1. Go to [console.firebase.google.com](https://console.firebase.google.com) and open your project (e.g. `freshroute-agent`)
+2. **Enable Authentication providers:**
+   - Go to **Authentication → Sign-in method**
+   - Enable **Email/Password**
+   - Enable **Google** sign-in
+3. **Enable Firestore Database** (start in test mode for development)
+4. Add a **Web app** (if not already created) and copy the config values into `.env.local`:
    ```env
    VITE_FIREBASE_API_KEY=<your-key>
    VITE_FIREBASE_AUTH_DOMAIN=<project>.firebaseapp.com
    VITE_FIREBASE_PROJECT_ID=<project-id>
-   VITE_FIREBASE_STORAGE_BUCKET=<project>.appspot.com
+   VITE_FIREBASE_STORAGE_BUCKET=<project>.firebasestorage.app
    VITE_FIREBASE_MESSAGING_SENDER_ID=<sender-id>
    VITE_FIREBASE_APP_ID=<app-id>
    ```
@@ -311,6 +317,10 @@ FreshRoute uses **Google Cloud Firestore** alongside Supabase for real-time AI u
    rules_version = '2';
    service cloud.firestore {
      match /databases/{database}/documents {
+       match /user_profiles/{uid} {
+         allow read: if request.auth != null && request.auth.uid == uid;
+         allow write: if request.auth != null && request.auth.uid == uid;
+       }
        match /ai_usage/{doc} {
          allow read: if true;
          allow create: if request.auth != null;
@@ -320,7 +330,7 @@ FreshRoute uses **Google Cloud Firestore** alongside Supabase for real-time AI u
    }
    ```
 
-Every Gemini call now writes a log entry to Firestore, and the admin dashboard at `/admin/settings` shows live-updating AI usage via Firestore `onSnapshot()`.
+Every sign-in/sign-up goes through **Firebase Auth**, user profiles are stored in **Firestore** (`user_profiles/{uid}`), and every Gemini call writes an AI usage log to Firestore. The admin dashboard at `/admin/settings` shows live-updating AI usage via Firestore `onSnapshot()`.
 
 ---
 
@@ -370,7 +380,9 @@ freshroute/
 │   │   ├── copy.ts                  # Copy-to-clipboard utility
 │   │   ├── db.ts                    # Database operations layer
 │   │   ├── engine.ts                # Pricing/spoilage/scenario calculation engine
-│   │   ├── firebase.ts              # Firebase app init + Firestore client
+│   │   ├── auth.ts                  # Firebase Auth service (email, Google, reset password)
+│   │   ├── firebase.ts              # Firebase app init + Auth + Firestore client
+│   │   ├── firebaseAuth.ts          # Standalone Firebase Auth helpers
 │   │   ├── firestore.ts             # Firestore AI usage logging + real-time subscriptions
 │   │   ├── format.ts                # Currency (PKR), time, ID formatting
 │   │   ├── gemini.ts                # Gemini AI client (text, vision, chat)
@@ -655,14 +667,14 @@ Full bilingual support via `src/i18n.ts` dictionary:
 |---|---|---|
 | `VITE_SUPABASE_URL` | ✅ | Supabase project URL |
 | `VITE_SUPABASE_ANON_KEY` | ✅ | Supabase anon/public key |
-| `VITE_FIREBASE_API_KEY` | ⚠️ | Firebase API key (for real-time AI logs) |
-| `VITE_FIREBASE_AUTH_DOMAIN` | ⚠️ | Firebase auth domain |
-| `VITE_FIREBASE_PROJECT_ID` | ⚠️ | Firebase project ID |
-| `VITE_FIREBASE_STORAGE_BUCKET` | ⚠️ | Firebase storage bucket |
-| `VITE_FIREBASE_MESSAGING_SENDER_ID` | ⚠️ | Firebase messaging sender ID |
-| `VITE_FIREBASE_APP_ID` | ⚠️ | Firebase app ID |
+| `VITE_FIREBASE_API_KEY` | ✅ | Firebase API key (Auth + Firestore) |
+| `VITE_FIREBASE_AUTH_DOMAIN` | ✅ | Firebase auth domain |
+| `VITE_FIREBASE_PROJECT_ID` | ✅ | Firebase project ID |
+| `VITE_FIREBASE_STORAGE_BUCKET` | ✅ | Firebase storage bucket |
+| `VITE_FIREBASE_MESSAGING_SENDER_ID` | ✅ | Firebase messaging sender ID |
+| `VITE_FIREBASE_APP_ID` | ✅ | Firebase app ID |
 
-> ⚠️ Firebase vars are optional — the app works without them, but the admin AI monitoring dashboard won't show real-time updates.
+> ✅ Firebase vars are **required** for authentication (Email/Password + Google Sign-in) and Firestore AI monitoring.
 
 ### What's Real vs. Demo
 

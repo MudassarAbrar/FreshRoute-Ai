@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 import { Navigate, useLocation, Outlet } from "react-router-dom"
 import { useApp } from "@/store/useApp"
-import { fetchProfile, onAuthChange, getSession } from "@/lib/auth"
+import { fetchProfile, onAuthChange } from "@/lib/auth"
 import { Loader2 } from "lucide-react"
 
 export function ProtectedRoute({ adminOnly }: { adminOnly?: boolean }) {
@@ -13,26 +13,31 @@ export function ProtectedRoute({ adminOnly }: { adminOnly?: boolean }) {
 
   useEffect(() => {
     let mounted = true
-    const { data: sub } = onAuthChange(async (sess) => {
+    const { data: sub } = onAuthChange(async (user) => {
       if (!mounted) return
-      if (sess) {
-        const prof = await fetchProfile(sess.user.id)
-        setAuth(sess, prof)
+      if (user) {
+        // Firebase user is authenticated — fetch profile from Firestore/Supabase
+        const prof = await fetchProfile(user.uid)
+        // Store user info as a lightweight session-like object
+        setAuth(
+          { user: { id: user.uid, email: user.email ?? "" } } as any,
+          prof ?? {
+            id: user.uid,
+            fullName: user.displayName ?? "",
+            email: user.email ?? "",
+            phone: "",
+            city: "",
+            address: "",
+            role: "farmer",
+            customerCode: "",
+            createdAt: new Date().toISOString(),
+          },
+        )
       } else {
         setAuth(null, null)
       }
       setLoading(false)
     })
-    if (!session) {
-      getSession().then(async (sess) => {
-        if (!mounted) return
-        if (sess) {
-          const prof = await fetchProfile(sess.user.id)
-          setAuth(sess, prof)
-        }
-        setLoading(false)
-      })
-    }
     return () => {
       mounted = false
       sub.subscription.unsubscribe()

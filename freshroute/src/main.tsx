@@ -16,6 +16,9 @@ import ResetPasswordPage from "@/pages/ResetPasswordPage"
 import { lazy, Suspense } from "react"
 import { Loader2 } from "lucide-react"
 
+// Public landing page
+const LandingPage = lazy(() => import("@/pages/LandingPage"))
+
 const DashboardPage = lazy(() => import("@/pages/DashboardPage"))
 const OrdersPage = lazy(() => import("@/pages/OrdersPage"))
 const TrackOrderPage = lazy(() => import("@/pages/TrackOrderPage"))
@@ -76,8 +79,10 @@ createRoot(document.getElementById("root")!).render(
             </Route>
           </Route>
 
+          {/* Public landing page */}
+          <Route path="/" element={<LandingPage />} />
+
           {/* Default redirect */}
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </Suspense>

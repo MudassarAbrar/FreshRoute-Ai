@@ -14,6 +14,8 @@ const config: Config = {
       fontFamily: {
         sans: ["Plus Jakarta Sans", "ui-sans-serif", "system-ui", "sans-serif"],
         urdu: ["Noto Nastaliq Urdu", "serif"],
+        display: ["Bricolage Grotesque", "Plus Jakarta Sans", "ui-sans-serif", "sans-serif"],
+        mono: ["IBM Plex Mono", "ui-monospace", "SFMono-Regular", "monospace"],
       },
       colors: {
         border: "hsl(var(--border))",
@@ -34,6 +36,7 @@ const config: Config = {
           700: "hsl(152 65% 25%)",
           800: "hsl(153 65% 19%)",
           900: "hsl(154 68% 13%)",
+          950: "hsl(155 72% 8%)",
         },
         secondary: {
           DEFAULT: "hsl(var(--secondary))",
@@ -118,6 +121,22 @@ const config: Config = {
           "70%": { transform: "scale(1.03)" },
           "100%": { opacity: "1", transform: "scale(1)" },
         },
+        "screen-in": {
+          "0%": { opacity: "0", transform: "translateY(20px) scale(0.985)", filter: "blur(5px)" },
+          "100%": { opacity: "1", transform: "translateY(0) scale(1)", filter: "blur(0)" },
+        },
+        "step-fill": {
+          "0%": { transform: "scaleX(0)" },
+          "100%": { transform: "scaleX(1)" },
+        },
+        "float-slow": {
+          "0%, 100%": { transform: "translateY(0)" },
+          "50%": { transform: "translateY(-14px)" },
+        },
+        "route-flow": {
+          "0%": { strokeDashoffset: "28" },
+          "100%": { strokeDashoffset: "0" },
+        },
       },
       animation: {
         "msg-in": "msg-in 0.28s cubic-bezier(0.21, 1.02, 0.73, 1) both",
@@ -128,6 +147,10 @@ const config: Config = {
         shimmer: "shimmer 1.4s linear infinite",
         "bar-grow": "bar-grow 0.9s cubic-bezier(0.22, 1, 0.36, 1) both",
         "pop-in": "pop-in 0.35s cubic-bezier(0.21, 1.02, 0.73, 1) both",
+        "screen-in": "screen-in 0.5s cubic-bezier(0.21, 1.02, 0.73, 1) both",
+        "step-fill": "step-fill 4.2s linear both",
+        "float-slow": "float-slow 7s ease-in-out infinite",
+        "route-flow": "route-flow 1.8s linear infinite",
       },
     },
   },
