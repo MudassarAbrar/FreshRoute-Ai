@@ -1,0 +1,1 @@
+Development: `npm run dev` (Vite), `npm run build` (tsc -b then vite build), `npm run lint` (oxlint), `npm run preview`. Environment variables are configured via `.env.local` using the template in `.env.example`.

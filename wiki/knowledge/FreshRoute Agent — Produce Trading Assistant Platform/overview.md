@@ -1,0 +1,1 @@
+MVP frontend and Supabase-backed chat interface that lets farmers and traders submit produce lots, receive AI-driven market recommendations, and approve buyer/transporter outreach within a single Vite + React app.

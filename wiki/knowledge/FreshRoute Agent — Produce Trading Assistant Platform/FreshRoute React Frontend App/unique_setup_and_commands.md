@@ -1,0 +1,1 @@
+`npm run dev` starts the Vite dev server; `npm run build` runs `tsc -b` then `vite build`; linting is done via `oxlint` configured in `.oxlintrc.json`.

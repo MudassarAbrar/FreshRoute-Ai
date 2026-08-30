@@ -1,0 +1,5 @@
+- Components read store state exclusively through selector functions passed to `useApp` (e.g. `useApp((s) => s.msgs)`) rather than subscribing to the whole store.
+- Mutations are dispatched by calling named side-effect functions from `@/store/director` (e.g. `onUserText`, `onVoiceNote`, `onQuickReply`) instead of writing directly to the store.
+- Message rendering uses a discriminated union on the message `kind` field inside a `switch` statement to map each type to its dedicated bubble or card component.
+- Internationalized strings are fetched via `t(lang, key)` using the current `lang` value from the store, applied consistently across headers, inputs, and labels.
+- Interactive elements use descriptive `aria-label` attributes and rely on Tailwind utility classes for layout, spacing, and hover/active transitions.

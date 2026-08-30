@@ -1,0 +1,1 @@
+React 19 + Vite + TypeScript build; Zustand for global state; Tailwind CSS + PostCSS for styling; Supabase JS client and Google GenAI SDK for backend integration via a Supabase Edge Function proxy.

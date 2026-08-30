@@ -1,0 +1,14 @@
+schema_version: 1
+module_path: frontend_app/app_shell
+title: App Shell & Overlay UI Components
+scope:
+    - freshroute/src/components/AuditDrawer.tsx
+    - freshroute/src/components/Bubbles.tsx
+    - freshroute/src/components/PhoneFrame.tsx
+    - freshroute/src/components/PhotoSheet.tsx
+    - freshroute/src/components/PriceTicker.tsx
+    - freshroute/src/components/SettingsSheet.tsx
+source_files: []
+depends_on: []
+related_to:
+    - path: frontend_app/chat_ui
