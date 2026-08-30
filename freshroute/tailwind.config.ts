@@ -14,7 +14,7 @@ const config: Config = {
       fontFamily: {
         sans: ["Plus Jakarta Sans", "ui-sans-serif", "system-ui", "sans-serif"],
         urdu: ["Noto Nastaliq Urdu", "serif"],
-        display: ["Bricolage Grotesque", "Plus Jakarta Sans", "ui-sans-serif", "sans-serif"],
+        display: ["Plus Jakarta Sans", "ui-sans-serif", "system-ui", "sans-serif"],
         mono: ["IBM Plex Mono", "ui-monospace", "SFMono-Regular", "monospace"],
       },
       colors: {

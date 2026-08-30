@@ -34,7 +34,59 @@ import type { Profile } from "@/types"
 
 const googleProvider = new GoogleAuthProvider()
 
+// ──────────────────────────── Error mapping ────────────────────────────
+
+/**
+ * Translates raw Firebase Auth error codes into human-readable messages
+ * so users never see "auth/configuration-not-found" style codes.
+ */
+export function friendlyAuthError(err: unknown): string {
+  const code = (err as { code?: string })?.code ?? ""
+  switch (code) {
+    case "auth/configuration-not-found":
+      return "Sign-in is not enabled yet. In the Firebase Console → Authentication → Sign-in method, enable Email/Password (and Google)."
+    case "auth/operation-not-allowed":
+      return "This sign-in method is disabled. Enable it in Firebase Console → Authentication → Sign-in method."
+    case "auth/email-already-in-use":
+      return "An account with this email already exists. Try signing in instead."
+    case "auth/invalid-email":
+      return "That email address doesn't look right. Please check it and try again."
+    case "auth/weak-password":
+      return "Password is too weak — use at least 6 characters."
+    case "auth/invalid-credential":
+    case "auth/wrong-password":
+    case "auth/user-not-found":
+      return "Incorrect email or password. Please try again."
+    case "auth/too-many-requests":
+      return "Too many attempts. Please wait a moment and try again."
+    case "auth/popup-closed-by-user":
+      return "The Google sign-in window was closed before finishing."
+    case "auth/popup-blocked":
+      return "Your browser blocked the sign-in popup. Allow popups for this site and try again."
+    case "auth/network-request-failed":
+      return "Network error — check your internet connection and try again."
+    case "auth/invalid-api-key":
+      return "The Firebase API key is invalid. Check the VITE_FIREBASE_* values in .env.local."
+    default: {
+      const msg = (err as { message?: string })?.message ?? ""
+      if (msg) return msg.replace(/^Firebase:\s*/, "").replace(/\s*\(auth\/.*\)\.?$/, "")
+      return "Something went wrong. Please try again."
+    }
+  }
+}
+
 // ──────────────────────────── Firebase Auth ────────────────────────────
+
+/**
+ * Re-throws an error with a human-readable message while keeping the
+ * original `code` attached (pages check it for silent cases like
+ * popup-closed-by-user).
+ */
+function rethrowFriendly(err: unknown): never {
+  throw Object.assign(new Error(friendlyAuthError(err)), {
+    code: (err as { code?: string })?.code ?? "",
+  })
+}
 
 /**
  * Sign up with email + password via Firebase Auth.
@@ -46,7 +98,12 @@ export async function signUp(
   meta: { fullName: string; phone: string; city: string; address: string },
 ) {
   // 1. Create Firebase Auth account
-  const cred = await createUserWithEmailAndPassword(firebaseAuth, email, password)
+  let cred
+  try {
+    cred = await createUserWithEmailAndPassword(firebaseAuth, email, password)
+  } catch (err) {
+    rethrowFriendly(err)
+  }
   if (meta.fullName) {
     await updateProfile(cred.user, { displayName: meta.fullName })
   }
@@ -85,7 +142,12 @@ export async function signUp(
  * Sign in with email + password via Firebase Auth.
  */
 export async function signIn(email: string, password: string) {
-  const cred = await signInWithEmailAndPassword(firebaseAuth, email, password)
+  let cred
+  try {
+    cred = await signInWithEmailAndPassword(firebaseAuth, email, password)
+  } catch (err) {
+    rethrowFriendly(err)
+  }
 
   // Ensure Supabase profile exists (best-effort)
   if (backendConfigured) {
@@ -115,8 +177,13 @@ export async function signIn(email: string, password: string) {
  * Creates the account if it doesn't exist yet.
  */
 export async function signInWithGoogle() {
-  const result = await signInWithPopup(firebaseAuth, googleProvider)
-  const user = result.user
+  let user
+  try {
+    const result = await signInWithPopup(firebaseAuth, googleProvider)
+    user = result.user
+  } catch (err) {
+    rethrowFriendly(err)
+  }
 
   // Write Firestore profile if first sign-in
   const profileRef = doc(firestoreDb, "user_profiles", user.uid)
@@ -167,10 +234,14 @@ export async function signOut() {
  * Send a password reset email via Firebase Auth.
  */
 export async function resetPassword(email: string) {
-  await sendPasswordResetEmail(firebaseAuth, email, {
-    url: `${window.location.origin}/reset-password`,
-    handleCodeInApp: false,
-  })
+  try {
+    await sendPasswordResetEmail(firebaseAuth, email, {
+      url: `${window.location.origin}/reset-password`,
+      handleCodeInApp: false,
+    })
+  } catch (err) {
+    rethrowFriendly(err)
+  }
 }
 
 /**

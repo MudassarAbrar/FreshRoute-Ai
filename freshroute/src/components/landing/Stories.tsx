@@ -35,7 +35,7 @@ function CompareBars() {
         <div key={r.city}>
           <div className="mb-0.5 flex items-baseline justify-between text-[10px]">
             <span className={cn("font-semibold", r.rec ? "text-primary-700" : "text-muted-foreground")}>{r.city}</span>
-            <span className={cn("font-mono font-semibold tabular-nums", r.rec ? "text-primary-800" : "text-foreground/70")}>
+            <span className={cn("font-semibold tabular-nums", r.rec ? "text-primary-800" : "text-foreground/70")}>
               {fmt(r.net)}
             </span>
           </div>
@@ -69,7 +69,7 @@ function KarachiVsFsd() {
       ].map((c) => (
         <div key={c.title} className={cn("rounded-xl border p-2.5", c.muted ? "border-border bg-muted/40" : "border-primary-600 bg-secondary/60")}>
           <p className={cn("text-[10px] font-extrabold", c.muted ? "text-muted-foreground" : "text-primary-700")}>{c.title}</p>
-          <p className={cn("font-mono text-[15px] font-semibold tabular-nums", c.muted ? "text-foreground/60" : "text-primary-800")}>
+          <p className={cn("text-[15px] font-semibold tabular-nums", c.muted ? "text-foreground/60" : "text-primary-800")}>
             {fmt(c.net)}
           </p>
           <div className="mt-1 flex flex-col gap-0.5">
@@ -102,20 +102,20 @@ function LotSplit() {
         <div className="rounded-xl border border-primary-600 bg-secondary/60 p-2.5">
           <p className="text-[9px] font-extrabold text-primary-700">GRADE A · 2,100 kg</p>
           <p className="mt-0.5 text-[9.5px] text-muted-foreground">Metro Fresh retail @ 126/kg</p>
-          <p className="mt-1 font-mono text-[13px] font-semibold tabular-nums text-primary-800">236,900</p>
+          <p className="mt-1 text-[14px] font-semibold tabular-nums text-primary-800">236,900</p>
         </div>
         <div className="rounded-xl border border-border bg-card p-2.5">
           <p className="text-[9px] font-extrabold text-foreground/70">GRADE B · 3,900 kg</p>
           <p className="mt-0.5 text-[9.5px] text-muted-foreground">Lahore wholesale @ 96/kg</p>
-          <p className="mt-1 font-mono text-[13px] font-semibold tabular-nums text-foreground/80">348,300</p>
+          <p className="mt-1 text-[14px] font-semibold tabular-nums text-foreground/80">348,300</p>
         </div>
       </div>
       <div className="rounded-xl bg-primary-800 px-3 py-2 text-center text-white">
-        <span className="font-mono text-[12px] font-semibold tabular-nums">585,200 net</span>
-        <span className="ml-2 rounded-full bg-amber-400/90 px-2 py-0.5 font-mono text-[9px] font-extrabold text-amber-950">
+        <span className="font-display text-[14px] font-semibold">585,200 net</span>
+        <span className="ml-2 rounded-full bg-white/15 px-2 py-0.5 text-[9px] font-bold text-emerald-100">
           +42,400
         </span>
-        <span className="ml-1 text-[9px] text-emerald-200/80">vs one wholesale lot</span>
+        <span className="ml-1.5 text-[9px] text-emerald-100/70">vs one wholesale lot</span>
       </div>
     </div>
   )
@@ -202,13 +202,11 @@ export function Stories() {
     <section id="stories" className="bg-background py-20 sm:py-28">
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
         <Reveal className="max-w-2xl">
-          <p className="font-mono text-[11px] font-semibold tracking-[0.2em] text-primary-600">
-            USER STORIES · ILLUSTRATIVE PILOT SCENARIOS
-          </p>
-          <h2 className="mt-3 font-display text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl">
+          <p className="text-[14px] font-bold text-primary-700">// Real decisions</p>
+          <h2 className="mt-3 font-display text-3xl font-extrabold leading-tight tracking-tight text-foreground sm:text-4xl">
             Three harvests, run through the agent.
           </h2>
-          <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">
+          <p className="mt-4 text-[15.5px] leading-relaxed text-muted-foreground">
             Names and lots are composites; every figure below comes from the app's demo market feed and cost model —
             the same math the pilot runs on the Multan–Lahore corridor.
           </p>
@@ -218,10 +216,10 @@ export function Stories() {
           <div className="relative hidden lg:block">
             <div className="sticky top-20 flex flex-col items-center gap-3">
               <PhoneMockup steps={HERO_STEPS} index={STORIES[active].screenIndex} compact showSteps={false} />
-              <div className="flex items-center gap-2 rounded-full bg-primary-900 px-4 py-2 text-white shadow-card">
-                <BadgeCheck className="h-4 w-4 text-emerald-300" />
-                <span className="text-[12px] font-bold">{STORIES[active].name}</span>
-                <span className="font-mono text-[9px] text-emerald-200/80">{STORIES[active].crop}</span>
+              <div className="flex items-center gap-2 rounded-full border border-border bg-card px-4 py-2 shadow-card">
+                <BadgeCheck className="h-4 w-4 text-primary-600" />
+                <span className="text-[12px] font-bold text-foreground">{STORIES[active].name}</span>
+                <span className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">{STORIES[active].crop}</span>
               </div>
               <div className="flex gap-1.5">
                 {STORIES.map((s, i) => (
@@ -250,23 +248,21 @@ export function Stories() {
                     )}
                   >
                     <div className="flex flex-wrap items-center gap-3 border-b border-border/60 px-5 py-4 sm:px-7">
-                      <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary-700 font-mono text-[13px] font-bold text-white">
+                      <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-secondary text-[13px] font-bold text-primary-700">
                         {s.initials}
                       </span>
                       <div className="min-w-0 flex-1">
                         <p className="text-[14.5px] font-extrabold text-foreground">{s.name}</p>
                         <p className="text-[11.5px] text-muted-foreground">{s.meta}</p>
                       </div>
-                      <span className="rounded-full bg-secondary px-2.5 py-1 font-mono text-[9px] font-bold tracking-wider text-primary-700">
+                      <span className="rounded-full bg-secondary px-2.5 py-1 text-[9px] font-bold tracking-wider text-primary-700">
                         {s.crop}
                       </span>
                     </div>
 
                     <div className="px-5 py-5 sm:px-7">
-                      <blockquote className="font-display text-[19px] font-bold leading-snug text-foreground sm:text-[21px]">
-                        <span className="text-primary-500">"</span>
-                        {s.quote}
-                        <span className="text-primary-500">"</span>
+                      <blockquote className="font-display text-[19px] font-semibold leading-snug text-foreground sm:text-[21px]">
+                        "{s.quote}"
                       </blockquote>
 
                       <div className="mt-5 grid gap-5 md:grid-cols-2">
@@ -294,12 +290,12 @@ export function Stories() {
                       </div>
                     </div>
 
-                    <div className="flex flex-wrap items-center justify-between gap-2 bg-primary-900 px-5 py-3.5 text-white sm:px-7">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border bg-secondary/70 px-5 py-3.5 sm:px-7">
                       <div>
-                        <p className="font-mono text-[17px] font-semibold tabular-nums">{s.outcome}</p>
-                        <p className="text-[10.5px] text-emerald-200/80">{s.outcomeNote}</p>
+                        <p className="font-display text-[20px] font-semibold text-primary-800">{s.outcome}</p>
+                        <p className="text-[10.5px] text-muted-foreground">{s.outcomeNote}</p>
                       </div>
-                      <span className="rounded-full border border-white/20 px-2.5 py-1 font-mono text-[8.5px] tracking-wide text-white/60">
+                      <span className="rounded-full border border-primary-300 bg-card px-2.5 py-1 text-[8.5px] font-bold tracking-wide text-primary-700">
                         ILLUSTRATIVE · DEMO FEED
                       </span>
                     </div>

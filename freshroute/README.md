@@ -694,6 +694,9 @@ Full bilingual support via `src/i18n.ts` dictionary:
 | Problem | Cause | Fix |
 |---|---|---|
 | "Backend is not connected yet" on login | `.env.local` values missing | Add Supabase URL + anon key, restart dev server |
+| `auth/configuration-not-found` on login/signup | Email/Password provider not enabled in Firebase | Firebase Console → **Authentication → Sign-in method** → enable **Email/Password** (and **Google**) |
+| `auth/operation-not-allowed` on Google sign-in | Google provider not enabled | Firebase Console → **Authentication → Sign-in method** → enable **Google** + set support email |
+| Firestore writes fail (`permission-denied`) | Security rules not deployed | Deploy the rules from [Step 7](#-step-7--firebase-auth--firestore-google-cloud-integration) in Firestore → Rules |
 | AI badge says `AI ERROR` | Edge Function not deployed or secret missing | Run `supabase secrets set` then `supabase functions deploy gemini-proxy` |
 | Empty dashboard after signup | Seed data not loaded | Run `0002_seed.sql` in SQL Editor, or place your first lot via chat |
 | Admin link missing | Role change requires re-login | Sign out and back in after running the `UPDATE profiles` SQL |

@@ -150,7 +150,7 @@ export function ScreenCompare() {
           <Landmark className="h-3.5 w-3.5 text-primary-600" />
           <span className="text-[10px] font-bold tracking-wide text-foreground">MARKET COMPARISON</span>
         </div>
-        <span className="font-mono text-[8px] text-muted-foreground">5 feeds · 47 min old</span>
+        <span className="text-[8px] text-muted-foreground">5 feeds · 47 min old</span>
       </div>
 
       <div className="animate-msg-in overflow-hidden rounded-xl border-2 border-primary-600 bg-gradient-to-b from-secondary/80 to-card" style={{ animationDelay: "0.15s" }}>
@@ -159,7 +159,7 @@ export function ScreenCompare() {
             <Award className="h-3 w-3 text-amber-300" />
             RECOMMENDED
           </span>
-          <span className="rounded-full bg-amber-400/90 px-1.5 py-0.5 font-mono text-[8.5px] font-extrabold text-amber-950">
+          <span className="rounded-full bg-amber-400/90 px-1.5 py-0.5 text-[8.5px] font-extrabold text-amber-950">
             +110,650
           </span>
         </div>
@@ -168,7 +168,7 @@ export function ScreenCompare() {
           <div className="flex items-end justify-between">
             <div>
               <p className="text-[8px] font-bold uppercase tracking-wide text-muted-foreground">Expected net</p>
-              <p className="font-mono text-[19px] font-semibold leading-none text-primary-800 tabular-nums">
+              <p className="text-[19px] font-bold leading-none text-primary-800 tabular-nums">
                 330,330
               </p>
               <p className="text-[8px] text-muted-foreground">gross 384,000 − costs</p>
@@ -209,7 +209,7 @@ export function ScreenCompare() {
               <NetBar net={r.net} maxNet={maxNet} />
             </div>
           </div>
-          <p className="font-mono text-[11px] font-semibold text-foreground/80 tabular-nums">
+          <p className="text-[11px] font-semibold text-foreground/80 tabular-nums">
             {r.net.toLocaleString()}
           </p>
           <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
@@ -290,7 +290,7 @@ export function ScreenTracking() {
             <MapPin className="h-3.5 w-3.5 text-primary-600" />
             Order FR-2418 · live
           </span>
-          <span className="flex items-center gap-1 font-mono text-[8px] font-semibold text-good">
+          <span className="flex items-center gap-1 text-[8px] font-semibold text-good">
             <span className="h-1.5 w-1.5 animate-pulse-dot rounded-full bg-good" />
             ON N-5 · 61 KM/H
           </span>
@@ -363,7 +363,7 @@ export function ScreenSale() {
         </div>
         <div className="p-3">
           <p className="text-[10.5px] font-bold text-muted-foreground">Lahore · Al-Karam Wholesale · 4,000 kg</p>
-          <p className="mt-1 font-mono text-[26px] font-semibold leading-none text-primary-800 tabular-nums">
+          <p className="mt-1 font-display text-[24px] font-semibold leading-none text-primary-800">
             PKR 330,330
           </p>
           <p className="mt-0.5 text-[9px] font-semibold text-good">+110,650 vs local auction estimate</p>
@@ -377,7 +377,7 @@ export function ScreenSale() {
             ].map(([label, amount]) => (
               <div key={label as string} className="flex justify-between text-[9px] text-muted-foreground">
                 <span>{label}</span>
-                <span className="font-mono tabular-nums">
+                <span className="tabular-nums">
                   {amount as number > 0 ? "" : "−"}
                   {Math.abs(amount as number).toLocaleString()}
                 </span>
@@ -385,7 +385,7 @@ export function ScreenSale() {
             ))}
             <div className="mt-1 flex justify-between border-t border-border/60 pt-1 text-[9.5px] font-bold text-foreground">
               <span>Net to Ashraf</span>
-              <span className="font-mono tabular-nums">330,330</span>
+              <span className="tabular-nums">330,330</span>
             </div>
           </div>
         </div>
