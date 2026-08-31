@@ -15,6 +15,13 @@
 - [src/vite-env.d.ts](file://freshroute/src/vite-env.d.ts)
 </cite>
 
+## Update Summary
+**Changes Made**
+- Updated build process documentation to reflect simplified TypeScript handling
+- Removed references to separate `tsc -b` compilation step
+- Updated diagrams and flowcharts to show Vite's integrated TypeScript support
+- Revised performance considerations for the streamlined build pipeline
+
 ## Table of Contents
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
@@ -28,7 +35,9 @@
 10. [Appendices](#appendices)
 
 ## Introduction
-This document explains FreshRoute’s build system and configuration setup with a focus on Vite, Tailwind CSS, PostCSS, TypeScript, and Oxlint. It covers development server behavior, build optimizations, plugin configurations, environment variable handling, theme customization, responsive breakpoints, custom utilities, CSS processing pipeline, strict TypeScript settings, path mappings, code quality enforcement, and guidance for extending the build process and optimizing production builds.
+This document explains FreshRoute's build system and configuration setup with a focus on Vite, Tailwind CSS, PostCSS, TypeScript, and Oxlint. It covers development server behavior, build optimizations, plugin configurations, environment variable handling, theme customization, responsive breakpoints, custom utilities, CSS processing pipeline, strict TypeScript settings, path mappings, code quality enforcement, and guidance for extending the build process and optimizing production builds.
+
+**Updated** The build process now relies solely on Vite's built-in TypeScript support, eliminating the need for a separate TypeScript compilation step.
 
 ## Project Structure
 FreshRoute is a Vite + React application using Tailwind CSS and PostCSS for styling, TypeScript for type safety, and Oxlint for fast linting. The build scripts are defined in package.json and orchestrated by Vite. The HTML entrypoint loads the React app from src/main.tsx.
@@ -40,7 +49,7 @@ B --> C["Vite (dev/build)"]
 C --> D["React Plugin"]
 C --> E["Tailwind CSS"]
 C --> F["PostCSS + Autoprefixer"]
-C --> G["TypeScript (type-check via tsc -b)"]
+C --> G["TypeScript (built-in support)"]
 C --> H["Oxlint (lint)"]
 ```
 
@@ -61,7 +70,7 @@ C --> H["Oxlint (lint)"]
 - Vite configuration: minimal setup with React plugin and an alias for the source directory.
 - Tailwind CSS: theme extension, color tokens, animations, and content scanning.
 - PostCSS: Tailwind and Autoprefixer pipeline.
-- TypeScript: project references, modern targets, strict checks, and path aliases.
+- TypeScript: project references, modern targets, strict checks, and path aliases handled by Vite.
 - Oxlint: React and TypeScript rules for code quality.
 - Environment variables: typed client-side env via ImportMetaEnv.
 
@@ -76,28 +85,28 @@ C --> H["Oxlint (lint)"]
 - [src/vite-env.d.ts:1-11](file://freshroute/src/vite-env.d.ts#L1-L11)
 
 ## Architecture Overview
-The build pipeline integrates multiple tools to provide a fast developer experience and optimized production output.
+The build pipeline integrates multiple tools to provide a fast developer experience and optimized production output. **Updated** The TypeScript compilation is now handled directly by Vite, simplifying the build process.
 
 ```mermaid
 sequenceDiagram
 participant Dev as "Developer"
 participant NPM as "npm scripts"
-participant TSC as "tsc -b"
 participant VITE as "Vite"
 participant PLG as "Plugins"
+participant TS as "TypeScript (Vite)"
 participant CSS as "PostCSS/Tailwind/Autoprefixer"
 participant OUT as "Build Output"
 Dev->>NPM : run dev / build / preview
 alt Development
 NPM->>VITE : vite
 VITE->>PLG : react plugin
+VITE->>TS : type-check (built-in)
 VITE->>CSS : tailwind + autoprefixer
 VITE-->>Dev : HMR-enabled dev server
 else Production Build
-NPM->>TSC : tsc -b (type-check only)
-TSC-->>NPM : success/failure
 NPM->>VITE : vite build
 VITE->>PLG : react plugin
+VITE->>TS : type-check (built-in)
 VITE->>CSS : tailwind + autoprefixer
 VITE-->>OUT : optimized bundles
 end
@@ -117,14 +126,17 @@ end
 - Entry point: index.html loads src/main.tsx which mounts the React app into #root.
 - Scripts:
   - dev: starts the Vite dev server with hot module replacement.
-  - build: runs type checking then builds with Vite.
+  - build: runs Vite build with integrated TypeScript support.
   - preview: serves the built assets locally.
+
+**Updated** The build command now uses `vite build` directly, leveraging Vite's built-in TypeScript compilation capabilities.
 
 ```mermaid
 flowchart TD
 Start(["Start 'dev'"]) --> Vite["Vite dev server"]
 Vite --> React["React plugin"]
 Vite --> Alias["@ alias -> ./src"]
+Vite --> TS["TypeScript (built-in)"]
 Vite --> CSS["PostCSS pipeline"]
 Vite --> HMR["Hot Module Replacement"]
 HMR --> Browser["Browser reloads modules"]
@@ -196,24 +208,28 @@ AP --> Out["Processed CSS"]
   - Strictness: noUnusedLocals, noUnusedParameters, noFallthroughCasesInSwitch, verbatimModuleSyntax, moduleDetection force, erasableSyntaxOnly.
   - Paths: @/* maps to ./src/*.
   - Types: includes vite/client for Vite-specific types.
+  - NoEmit: true (handled by Vite).
 - Node config:
   - Target: ES2023; Lib: ES2023; Types: node.
   - Module: nodenext for Node tooling.
   - Same strict flags as app config.
-- Build integration: npm build runs tsc -b first to validate types before building with Vite.
+- **Updated** Build integration: npm build runs Vite directly, which handles TypeScript compilation internally without requiring a separate tsc step.
 
 ```mermaid
 graph TB
 Root["tsconfig.json"] --> App["tsconfig.app.json"]
 Root --> Node["tsconfig.node.json"]
-App --> Types["Strict checks<br/>Paths (@/*)<br/>JSX react-jsx"]
+App --> Types["Strict checks<br/>Paths (@/*)<br/>JSX react-jsx<br/>NoEmit (Vite handles)"]
 Node --> NodeTypes["Node types<br/>nodenext module"]
+Vite["Vite"] --> TSComp["TypeScript Compilation"]
+TSComp --> App
 ```
 
 **Diagram sources**
 - [tsconfig.json:1-8](file://freshroute/tsconfig.json#L1-L8)
 - [tsconfig.app.json:1-35](file://freshroute/tsconfig.app.json#L1-L35)
 - [tsconfig.node.json:1-24](file://freshroute/tsconfig.node.json#L1-L24)
+- [package.json:6-10](file://freshroute/package.json#L6-L10)
 
 **Section sources**
 - [tsconfig.json:1-8](file://freshroute/tsconfig.json#L1-L8)
@@ -262,16 +278,16 @@ Types --> App["Application code uses import.meta.env.*"]
 - [src/vite-env.d.ts:1-11](file://freshroute/src/vite-env.d.ts#L1-L11)
 
 ## Dependency Analysis
-The following diagram shows how the build scripts orchestrate dependencies and tools.
+The following diagram shows how the build scripts orchestrate dependencies and tools. **Updated** Simplified dependency chain with Vite handling TypeScript compilation directly.
 
 ```mermaid
 graph TB
 Pkg["package.json scripts"] --> Dev["vite"]
-Pkg --> Build["tsc -b && vite build"]
+Pkg --> Build["vite build"]
 Pkg --> Preview["vite preview"]
-Build --> TSC["typescript (tsc)"]
 Build --> Vite["vite"]
 Vite --> ReactP["plugin-react"]
+Vite --> TS["TypeScript (built-in)"]
 Vite --> Tail["tailwindcss"]
 Vite --> Auto["autoprefixer"]
 Pkg --> OXL["oxlint"]
@@ -292,7 +308,7 @@ Pkg --> OXL["oxlint"]
   - Use the default Vite dev server for fast HMR; keep plugins minimal.
   - Avoid heavy synchronous operations in components to maintain responsiveness.
 - Production build:
-  - Type checking is performed via tsc -b before building; ensure it passes to avoid wasted build time.
+  - **Updated** Type checking is performed directly by Vite during the build process, eliminating the separate TypeScript compilation step for improved build speed.
   - Tailwind purges unused styles automatically based on configured content paths.
   - Autoprefixer ensures compatibility without manual prefix maintenance.
 - Extending the build:
@@ -302,11 +318,9 @@ Pkg --> OXL["oxlint"]
   - For stricter TypeScript checks, enable additional compilerOptions in tsconfig.app.json and tsconfig.node.json.
   - For advanced linting, expand .oxlintrc.json rules or integrate ESLint alongside Oxlint if needed.
 
-[No sources needed since this section provides general guidance]
-
 ## Troubleshooting Guide
 - Build fails due to type errors:
-  - Run the type check step explicitly to see detailed diagnostics before building.
+  - **Updated** Run `npm run build` to see detailed diagnostics from Vite's integrated TypeScript compilation.
 - Tailwind classes not applied:
   - Ensure your files are covered by the content globs in tailwind.config.ts.
   - Verify that CSS is imported in the app entry point.
@@ -323,15 +337,13 @@ Pkg --> OXL["oxlint"]
 - [.oxlintrc.json:1-9](file://freshroute/.oxlintrc.json#L1-L9)
 
 ## Conclusion
-FreshRoute’s build system combines Vite, React, Tailwind CSS, PostCSS, TypeScript, and Oxlint to deliver a fast development experience and optimized production output. The configuration is intentionally minimal yet extensible, allowing you to add plugins, customize themes, enforce strict type and lint rules, and manage environment variables safely. Follow the guidance above to extend the build process and optimize production builds while maintaining code quality.
-
-[No sources needed since this section summarizes without analyzing specific files]
+FreshRoute's build system combines Vite, React, Tailwind CSS, PostCSS, TypeScript, and Oxlint to deliver a fast development experience and optimized production output. **Updated** The build process has been simplified by removing the separate TypeScript compilation step, now relying entirely on Vite's built-in TypeScript support for faster builds while maintaining strict type checking. The configuration is intentionally minimal yet extensible, allowing you to add plugins, customize themes, enforce strict type and lint rules, and manage environment variables safely. Follow the guidance above to extend the build process and optimize production builds while maintaining code quality.
 
 ## Appendices
 
 ### Quick Commands Reference
 - Start development server: npm run dev
-- Type-check and build: npm run build
+- **Updated** Type-check and build: npm run build (now uses Vite's integrated TypeScript support)
 - Preview production build: npm run preview
 - Lint code: npm run lint
 

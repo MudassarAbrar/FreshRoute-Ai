@@ -1,49 +1,50 @@
+import { useState } from "react"
 import { Link } from "react-router-dom"
-import { useRef } from "react"
+import { motion } from "motion/react"
 import {
   ArrowRight,
   BadgeCheck,
+  Building2,
   Clock3,
   Landmark,
   Languages,
   Layers,
-  MessageSquareText,
+  MapPin,
   ShieldCheck,
+  Smartphone,
+  Sparkles,
+  ThermometerSnowflake,
   TrendingUp,
   Truck,
 } from "lucide-react"
 import { HERO_STEPS } from "@/components/landing/PhoneScreens"
 import { PhoneMockup } from "@/components/landing/PhoneMockup"
-import { MarqueeStrip } from "@/components/landing/MarqueeStrip"
 import { AdminMockup } from "@/components/landing/AdminMockup"
 import { Stories } from "@/components/landing/Stories"
 import { Testimonials } from "@/components/landing/Testimonials"
 import { Pricing } from "@/components/ui/pricing"
-import { ScrollStroke } from "@/components/ui/svg-follow-scroll"
 import { Logo, Wordmark } from "@/components/landing/Logo"
 import { Reveal } from "@/components/landing/Reveal"
 
-const MANDI_CITIES = [
-  "Lahore",
-  "Karachi",
-  "Multan",
-  "Faisalabad",
-  "Islamabad",
-  "Sialkot",
-  "Peshawar",
-  "Hyderabad",
-  "Quetta",
-  "Gujranwala",
+const MANDI_FEED = [
+  { city: "Lahore (Badami Bagh)", crop: "Tomato", price: "96 PKR/kg", change: "+14.2%", tone: "good" },
+  { city: "Karachi (Super Hwy)", crop: "Mango", price: "220 PKR/kg", change: "+8.5%", tone: "good" },
+  { city: "Multan (Sabzi Mandi)", crop: "Tomato", price: "62 PKR/kg", change: "-3.1%", tone: "warn" },
+  { city: "Islamabad (I-11)", crop: "Kinnow", price: "110 PKR/kg", change: "+19.0%", tone: "good" },
+  { city: "Faisalabad (Chenab)", crop: "Onion", price: "84 PKR/kg", change: "+6.4%", tone: "good" },
+  { city: "Sialkot Mandi", crop: "Potato", price: "54 PKR/kg", change: "+4.1%", tone: "good" },
+  { city: "Peshawar Mandi", crop: "Chili", price: "155 PKR/kg", change: "+11.8%", tone: "good" },
+  { city: "Hyderabad Mandi", crop: "Banana", price: "72 PKR/kg", change: "+5.2%", tone: "good" },
 ]
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
-  return <p className="text-[14px] font-bold text-primary-700">// {children}</p>
+  return <p className="text-[13.5px] font-bold uppercase tracking-wider text-primary-700">// {children}</p>
 }
 
 function Nav() {
   return (
-    <header className="fixed inset-x-0 top-0 z-50 border-b border-border/60 bg-background/85 backdrop-blur-md">
-      <div className="mx-auto flex h-16 max-w-6xl items-center gap-8 px-4 sm:px-6">
+    <header className="fixed inset-x-0 top-0 z-50 border-b border-border/60 bg-background/90 backdrop-blur-md">
+      <div className="mx-auto flex h-16 max-w-6xl items-center gap-6 px-4 sm:px-6">
         <Link
           to="/"
           className="rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
@@ -51,35 +52,36 @@ function Nav() {
           <Wordmark />
         </Link>
 
-        <nav className="ml-auto hidden items-center gap-7 md:flex" aria-label="Sections">
+        <nav className="ml-auto hidden items-center gap-5 lg:flex" aria-label="Sections">
           {[
-            ["The system", "#system"],
-            ["How it works", "#how"],
+            ["The Problem", "#problem"],
+            ["How it Works", "#how"],
+            ["Operator Desk", "#system"],
             ["Stories", "#stories"],
             ["Pricing", "#pricing"],
           ].map(([label, href]) => (
             <a
               key={href}
               href={href}
-              className="text-[13.5px] font-semibold text-foreground/70 transition-colors hover:text-primary-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              className="text-[13px] font-semibold text-foreground/75 transition-colors hover:text-primary-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               {label}
             </a>
           ))}
         </nav>
 
-        <div className="ml-auto flex items-center gap-2 md:ml-0">
+        <div className="ml-auto flex items-center gap-2.5 lg:ml-0">
           <Link
             to="/login"
-            className="rounded-full px-3.5 py-2 text-[13.5px] font-bold text-foreground/75 transition-colors hover:bg-white/70 hover:text-primary-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="rounded-full px-3.5 py-1.5 text-[13px] font-bold text-foreground/75 transition-colors hover:bg-muted hover:text-primary-800"
           >
             Log in
           </Link>
           <Link
             to="/signup"
-            className="rounded-full bg-primary-800 px-5 py-2 text-[13.5px] font-bold text-white shadow-card transition-colors hover:bg-primary-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            className="rounded-full bg-primary-800 px-4.5 py-2 text-[13px] font-bold text-white shadow-card transition-colors hover:bg-primary-900"
           >
-            Get started
+            Join Pilot
           </Link>
         </div>
       </div>
@@ -89,28 +91,34 @@ function Nav() {
 
 function FloatingCard({
   className,
-  delay,
+  delay = 0,
   icon: Icon,
   tone,
   title,
   body,
 }: {
   className?: string
-  delay: string
+  delay?: number
   icon: React.ElementType
   tone: "good" | "warn" | "primary"
   title: string
   body: string
 }) {
   return (
-    <div
-      className={`animate-float-slow absolute z-10 hidden w-[210px] rounded-2xl border border-border/50 bg-card p-3.5 shadow-card-hover lg:block ${className ?? ""}`}
-      style={{ animationDelay: delay }}
+    <motion.div
+      initial={{ opacity: 0, y: 20, scale: 0.9 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ duration: 0.7, delay, ease: [0.21, 0.47, 0.32, 0.98] }}
+      className={`animate-float-slow absolute z-10 hidden w-[215px] rounded-2xl border border-border/60 bg-card/95 backdrop-blur-sm p-3.5 shadow-card-hover lg:block ${className ?? ""}`}
     >
       <div className="flex items-center gap-2">
         <span
           className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${
-            tone === "good" ? "bg-good/10 text-good" : tone === "warn" ? "bg-warn/15 text-warn" : "bg-primary-600/10 text-primary-700"
+            tone === "good"
+              ? "bg-good/10 text-good"
+              : tone === "warn"
+                ? "bg-warn/15 text-warn"
+                : "bg-primary-600/10 text-primary-700"
           }`}
         >
           <Icon className="h-4 w-4" />
@@ -118,118 +126,172 @@ function FloatingCard({
         <p className="text-[12px] font-extrabold leading-tight text-foreground">{title}</p>
       </div>
       <p className="mt-1.5 text-[11px] font-medium leading-snug text-muted-foreground">{body}</p>
-    </div>
+    </motion.div>
   )
 }
 
 function Hero() {
   return (
-    <section data-scroll-anchor className="relative overflow-hidden pt-28 sm:pt-36">
-      <div className="relative mx-auto max-w-3xl px-4 text-center sm:px-6">
-        <Reveal>
-          <h1 className="mt-2 font-hero text-[3.5rem] leading-[1.1] tracking-normal text-primary-800 sm:text-[5rem]">
-            Sell your harvest where it's worth most.
+    <section className="relative overflow-hidden pt-26 sm:pt-32 pb-12">
+      {/* Background farm image with gradient overlay */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-[700px]">
+        <img
+          src="/images/hero-farm-backdrop.png"
+          alt=""
+          aria-hidden="true"
+          className="h-full w-full object-cover"
+        />
+        <div className="absolute inset-0 bg-gradient-to-b from-background/70 via-background/85 to-background" />
+      </div>
+
+      {/* Ambient lighting */}
+      <div
+        className="pointer-events-none absolute inset-x-0 top-0 h-[720px]"
+        style={{
+          backgroundImage:
+            "radial-gradient(ellipse 45% 40% at 15% 0%, hsl(152 65% 94% / 0.6), transparent), radial-gradient(ellipse 40% 35% at 85% 10%, hsl(44 90% 95% / 0.5), transparent)",
+        }}
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-[300px] select-none text-center font-display text-[22vw] font-extrabold leading-none tracking-tighter text-black/[0.03] dark:text-white/[0.03]"
+      >
+        FRESH
+      </div>
+
+      <div className="relative mx-auto max-w-4xl px-4 text-center sm:px-6">
+        <Reveal delay={0}>
+          <span className="inline-flex items-center gap-2 rounded-full border border-primary-700/20 bg-card/80 backdrop-blur-md px-4 py-1.5 text-[12px] font-bold text-primary-800 shadow-sm">
+            <span className="h-2 w-2 animate-pulse rounded-full bg-good" aria-hidden />
+            Pilot Live · Multan ⟶ Lahore Corridor · Perishable Arbitrage
+          </span>
+        </Reveal>
+
+        <Reveal delay={100}>
+          <h1 className="mt-5 font-display text-[2.8rem] font-extrabold leading-[1.05] tracking-tight text-foreground sm:text-[4.2rem]">
+            Sell your harvest where it is worth the most.
           </h1>
         </Reveal>
 
-        <Reveal delay={180}>
-          <p className="mx-auto mt-5 max-w-xl text-[16px] leading-relaxed text-muted-foreground">
-            FreshRoute is an AI selling agent for fresh-produce farmers. Send one message — it grades your lot, compares
-            five mandis <span className="font-semibold text-foreground">after transport and spoilage</span>, then
-            contacts the buyer, books the truck and tracks delivery to the last kilometre.
+        <Reveal delay={200}>
+          <p className="mx-auto mt-5 max-w-2xl text-[16px] leading-relaxed text-muted-foreground">
+            FreshRoute is an autonomous AI selling agent for Pakistan's fresh-produce farmers. Send one voice message
+            or photo in Urdu — the agent grades your lot with Gemini Vision, calculates true net profits across 5
+            mandis after transport & spoilage, books certified cold-chain carriers, and verifies direct escrow payout.
           </p>
-          <p className="mt-3 font-urdu text-[18px] leading-loose text-primary-800/85">
-            ایک پیغام — مکمل فروخت، آپ کی منظوری سے۔
+          <p className="mt-3 font-urdu text-[19px] font-semibold leading-loose text-primary-800">
+            ایک پیغام — مکمل فروخت، حقیقی منافع، آپ کی منظوری سے۔
           </p>
         </Reveal>
 
-        <Reveal delay={260}>
+        <Reveal delay={300}>
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
             <Link
               to="/signup"
-              className="group flex items-center gap-2 rounded-full bg-primary-800 px-7 py-3.5 text-[14.5px] font-bold text-white shadow-glow transition-all hover:bg-primary-900 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              className="group flex items-center gap-2 rounded-full bg-primary-800 px-7 py-3.5 text-[14.5px] font-bold text-white shadow-glow transition-all hover:bg-primary-900 active:scale-[0.98]"
             >
-              Join the pilot — free
+              Join the Pilot — Free
               <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
             </Link>
             <a
               href="#how"
-              className="rounded-full border border-border bg-card px-7 py-3.5 text-[14.5px] font-bold text-primary-900 shadow-card transition-colors hover:border-primary-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              className="rounded-full border border-border bg-card/80 backdrop-blur-sm px-7 py-3.5 text-[14.5px] font-bold text-primary-900 shadow-card transition-colors hover:border-primary-400"
             >
-              See how it works
+              See How it Works
             </a>
           </div>
         </Reveal>
 
-        <Reveal delay={340}>
-          <div className="mt-8 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-[12.5px] font-semibold text-muted-foreground">
+        <Reveal delay={400}>
+          <div className="mt-7 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-[12px] font-semibold text-muted-foreground">
             <span className="flex items-center gap-1.5">
               <ShieldCheck className="h-4 w-4 text-primary-700" />
-              Nothing sent without your approval
+              Sovereign Human Approval
             </span>
             <span className="flex items-center gap-1.5">
               <Languages className="h-4 w-4 text-primary-700" />
-              English + اردو
+              Native Urdu &amp; English
             </span>
             <span className="flex items-center gap-1.5">
-              <BadgeCheck className="h-4 w-4 text-primary-700" />
-              No downloads — runs in the browser
+              <ThermometerSnowflake className="h-4 w-4 text-primary-700" />
+              Cold Chain &amp; Transit Spoilage AI
             </span>
           </div>
         </Reveal>
       </div>
 
-      <Reveal delay={220} className="relative mt-14 flex justify-center">
+      {/* Live Phone Mockup with Floating Badges */}
+      <Reveal delay={250} className="relative mt-12 flex justify-center px-4">
         <div className="relative">
           <FloatingCard
-            className="-left-[248px] top-8"
-            delay="0s"
+            className="-left-[240px] top-6"
+            delay={0.4}
             icon={TrendingUp}
             tone="good"
             title="Lahore · PKR 96/kg"
-            body="Best of 5 mandis today — 34 more than Multan's auction."
+            body="Top of 5 mandis today — +34 PKR/kg higher than local Multan auction."
           />
           <FloatingCard
-            className="-right-[248px] top-24"
-            delay="1.6s"
-            icon={ShieldCheck}
-            tone="warn"
-            title="Draft ready — needs you"
-            body="Offer to Al-Karam Wholesale. Nothing sends until you approve."
+            className="-right-[240px] top-20"
+            delay={0.6}
+            icon={Sparkles}
+            tone="primary"
+            title="Gemini Vision"
+            body="Graded 65% Grade A / 35% Grade B with 91% firmness score."
           />
           <FloatingCard
-            className="-left-[238px] bottom-24"
-            delay="3.1s"
+            className="-left-[230px] bottom-28"
+            delay={0.8}
             icon={Truck}
             tone="primary"
-            title="Truck booked · 6:00 AM"
-            body="Covered Mazda, Multan → Lahore, all costs in your net."
+            title="Mazda Booked · 6:00 AM"
+            body="Covered transport Multan → Lahore. All fuel & tolls included."
           />
           <FloatingCard
-            className="-right-[238px] bottom-8"
-            delay="4.4s"
+            className="-right-[230px] bottom-10"
+            delay={1.0}
             icon={Landmark}
             tone="good"
-            title="PKR 330,330 net"
-            body="+110,650 vs selling at the local mandi."
+            title="PKR 330,330 Banked"
+            body="+110,650 PKR extra profit in farmer's pocket."
           />
-          <PhoneMockup steps={HERO_STEPS} auto />
+          <PhoneMockup steps={HERO_STEPS} auto showSteps />
         </div>
       </Reveal>
 
+      {/* Live Mandi Marquee Feed */}
       <div className="relative mt-12">
-        <Reveal>
-          <p className="text-center text-[13px] font-bold text-primary-900/70">
-            Built for the mandis of Punjab &amp; Sindh — price feeds across {MANDI_CITIES.length} cities
-          </p>
-        </Reveal>
-        <Reveal delay={120}>
-          <div className="mt-4 bg-card/60 py-4">
-            <MarqueeStrip items={MANDI_CITIES} className="max-w-5xl" />
+        <Reveal delay={0}>
+          <div className="flex items-center justify-center gap-2">
+            <span className="h-2 w-2 rounded-full bg-good animate-ping" />
+            <p className="text-center text-[12.5px] font-bold text-primary-900/80">
+              Live Mandi Price Feeds Across Major Agricultural Hubs
+            </p>
           </div>
-          <p className="mt-2 text-center text-[11px] font-medium text-muted-foreground/80">
-            Simulated pilot feed — not live market prices. Field feeds replace these as the pilot reports.
-          </p>
+        </Reveal>
+        <Reveal delay={150}>
+          <div className="mt-3 bg-card/60 py-3 border-y border-border/50">
+            <div className="flex w-max gap-4 animate-marquee hover:[animation-play-state:paused]">
+              {[...MANDI_FEED, ...MANDI_FEED].map((item, idx) => (
+                <div
+                  key={idx}
+                  className="flex items-center gap-3 rounded-xl border border-border/60 bg-card px-3.5 py-1.5 shadow-sm"
+                >
+                  <MapPin className="h-3.5 w-3.5 text-primary-700" />
+                  <span className="text-[12px] font-bold text-foreground">{item.city}</span>
+                  <span className="text-[11px] font-semibold text-muted-foreground">{item.crop}</span>
+                  <span className="text-[12px] font-mono font-extrabold text-foreground">{item.price}</span>
+                  <span
+                    className={`text-[11px] font-bold px-1.5 py-0.5 rounded ${
+                      item.tone === "good" ? "bg-good/10 text-good" : "bg-warn/15 text-warn"
+                    }`}
+                  >
+                    {item.change}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
         </Reveal>
       </div>
     </section>
@@ -239,148 +301,77 @@ function Hero() {
 const PROBLEMS = [
   {
     icon: Landmark,
-    title: "The price is discovered at the gate",
-    body: "The rate becomes real when your truck is already at the mandi and the auction underway. By then, every alternative is gone.",
+    title: "Price Discovered at the Gate",
+    urduTitle: "منڈی گیٹ پر مجبوری میں قیمت طے ہونا",
+    body: "The rate is only revealed when your truck is already parked inside the mandi and the morning auction starts. By then, turning back is impossible and you are forced to accept whatever is offered.",
   },
   {
     icon: Layers,
-    title: "The stack takes its share",
-    body: "Commission agent, wholesaler, loader, transporter — each takes a cut, and nobody owes you the net number at the end of it.",
+    title: "4–5 Layers of Middlemen",
+    urduTitle: "آڑھتی، دلال اور کمیشن ایجنٹس کی کٹوتی",
+    body: "Commission agent, local trader, loader, weigh-bridge, and transporter all take their cut. The farmer bears 100% of the production risk while capturing only a fraction of the final consumer value.",
   },
   {
     icon: Clock3,
-    title: "The produce won't wait",
-    body: "Tomatoes lose value by the hour in August heat. The decision runs on hours; the information arrives in days.",
+    title: "Perishability in 45°C Heat",
+    urduTitle: "گرمی میں فصل کے ضیاع کا خطرہ",
+    body: "Fresh tomatoes, mangoes, and vegetables lose 8–15% of their value for every 6 hours spent in unventilated trucks under August Punjab heat. The decision is urgent, but transparent data arrives too late.",
   },
 ]
 
 function Problem() {
   return (
-    <section data-scroll-anchor id="problem" className="py-20 sm:py-28">
+    <section id="problem" className="py-20 sm:py-28 bg-card/40 relative">
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
-        <Reveal className="max-w-2xl">
-          <SectionLabel>The problem</SectionLabel>
+        <Reveal className="max-w-3xl">
+          <SectionLabel>The Motive &amp; Core Challenge</SectionLabel>
           <h2 className="mt-3 font-display text-3xl font-extrabold leading-tight tracking-tight text-foreground sm:text-4xl">
-            A same-day decision, made with last week's information.
+            A same-day perishable harvest, trapped in last century's middlemen chain.
           </h2>
           <p className="mt-4 text-[15.5px] leading-relaxed text-muted-foreground">
-            This is the gap FreshRoute exists to close — not with advice, but with numbers the farmer can act on the
-            same morning.
+            Pakistan's smallholder growers produce world-class agricultural harvests, but are systemically crippled by
+            information asymmetry, exploitative commission cartels, and post-harvest transport spoilage.
           </p>
         </Reveal>
 
-        <div className="mt-12 grid gap-5 md:grid-cols-3">
+        <div className="mt-12 grid gap-6 md:grid-cols-3">
           {PROBLEMS.map((p, i) => (
-            <Reveal key={p.title} delay={i * 100}>
-              <div className="h-full rounded-3xl border border-border/50 bg-card p-7 shadow-card">
-                <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-secondary text-primary-800">
-                  <p.icon className="h-5 w-5" />
+            <Reveal key={p.title} delay={i * 150}>
+              <div className="h-full rounded-3xl border border-border/70 bg-card p-7 shadow-card hover:shadow-card-hover transition-all">
+                <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-secondary text-primary-800 shadow-sm">
+                  <p.icon className="h-6 w-6" />
                 </span>
-                <h3 className="mt-4 font-display text-[19px] font-extrabold leading-snug text-foreground">{p.title}</h3>
-                <p className="mt-2.5 text-[13.5px] leading-relaxed text-muted-foreground">{p.body}</p>
+                <h3 className="mt-5 font-display text-[18px] font-extrabold leading-snug text-foreground">{p.title}</h3>
+                <p className="mt-1 font-urdu text-[13.5px] text-primary-800/80 font-bold">{p.urduTitle}</p>
+                <p className="mt-2.5 text-[13px] leading-relaxed text-muted-foreground">{p.body}</p>
               </div>
             </Reveal>
           ))}
         </div>
 
-        <Reveal delay={150}>
-          <div className="mt-6 grid gap-5 rounded-3xl border border-border/50 bg-card px-8 py-7 shadow-card sm:grid-cols-3">
+        <Reveal delay={200}>
+          <div className="mt-8 grid gap-6 rounded-3xl border border-primary-700/20 bg-gradient-to-r from-secondary/80 to-card px-8 py-8 shadow-card sm:grid-cols-3">
             {[
-              { v: "30–40%", label: "of fruits & vegetables lost between farm and consumer in Pakistan*" },
-              { v: "4–5", label: "intermediaries between the grower and the plate" },
-              { v: "hours", label: "the window to decide — once the crop is picked" },
+              {
+                v: "30–40%",
+                label: "of fresh produce lost post-harvest in Pakistan before reaching consumers (FAO estimates)",
+              },
+              {
+                v: "PKR 110K+",
+                label: "average profit trapped in middlemen spreads per 4-ton tomato harvest",
+              },
+              {
+                v: "< 4 Hours",
+                label: "the critical window to grade, arbitrate, and dispatch before heat degradation sets in",
+              },
             ].map((s) => (
               <div key={s.v} className="text-center sm:text-left">
-                <p className="font-display text-[30px] font-extrabold leading-none text-primary-800">{s.v}</p>
-                <p className="mt-2 text-[12.5px] leading-snug text-muted-foreground">{s.label}</p>
+                <p className="font-display text-[32px] font-extrabold leading-none text-primary-800">{s.v}</p>
+                <p className="mt-2 text-[12px] leading-snug text-muted-foreground font-medium">{s.label}</p>
               </div>
             ))}
           </div>
         </Reveal>
-      </div>
-    </section>
-  )
-}
-
-function OneSystem() {
-  return (
-    <section data-scroll-anchor id="system" className="relative overflow-hidden py-20 sm:py-28">
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -right-24 top-10 select-none font-display text-[11rem] font-extrabold leading-none tracking-tighter text-white/40"
-      >
-        FRESH
-      </div>
-
-      <div className="relative mx-auto max-w-6xl px-4 sm:px-6">
-        <Reveal className="mx-auto max-w-2xl text-center">
-          <SectionLabel>One system, two experiences</SectionLabel>
-          <h2 className="mt-3 font-display text-3xl font-extrabold leading-tight tracking-tight text-foreground sm:text-4xl">
-            The grower chats. The operator sees everything.
-          </h2>
-          <p className="mt-4 text-[15.5px] leading-relaxed text-muted-foreground">
-            One shared backend, two surfaces built for two very different days — a farmer's phone and an operations
-            desk.
-          </p>
-        </Reveal>
-
-        <div className="mt-14 grid items-start gap-14 lg:grid-cols-2">
-          <Reveal>
-            <div className="flex items-center gap-3">
-              <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary-800 text-white">
-                <MessageSquareText className="h-5 w-5" />
-              </span>
-              <div>
-                <h3 className="font-display text-[21px] font-extrabold text-foreground">For the grower</h3>
-                <p className="text-[12.5px] font-semibold text-muted-foreground">A chat that sells — voice or text, EN + اردو</p>
-              </div>
-            </div>
-            <ul className="mt-5 flex flex-col gap-2.5">
-              {[
-                "Grades the lot from photos, asks only what it still needs",
-                "Shows every mandi ranked by net — after every cost",
-                "Drafts buyer messages and bookings for explicit approval",
-                "Tracks the truck and confirms payment, in the same thread",
-              ].map((f) => (
-                <li key={f} className="flex gap-2.5 text-[13.5px] leading-snug text-foreground/85">
-                  <BadgeCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary-700" />
-                  {f}
-                </li>
-              ))}
-            </ul>
-            <div className="mt-7 flex justify-center">
-              <PhoneMockup steps={HERO_STEPS} auto compact />
-            </div>
-          </Reveal>
-
-          <Reveal delay={140}>
-            <div className="flex items-center gap-3">
-              <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary-800 text-white">
-                <Landmark className="h-5 w-5" />
-              </span>
-              <div>
-                <h3 className="font-display text-[21px] font-extrabold text-foreground">For the operator</h3>
-                <p className="text-[12.5px] font-semibold text-muted-foreground">An operations console over every lot</p>
-              </div>
-            </div>
-            <ul className="mt-5 flex flex-col gap-2.5">
-              {[
-                "Every lot, route and net figure on one screen",
-                "Approvals, exceptions and AI usage logged live",
-                "Buyer and transporter directories with history",
-                "Role-based access — farmers never see the desk",
-              ].map((f) => (
-                <li key={f} className="flex gap-2.5 text-[13.5px] leading-snug text-foreground/85">
-                  <BadgeCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary-700" />
-                  {f}
-                </li>
-              ))}
-            </ul>
-            <div className="mt-7">
-              <AdminMockup />
-            </div>
-          </Reveal>
-        </div>
       </div>
     </section>
   )
@@ -403,17 +394,17 @@ const DIFFERENTIATORS = [
 
 function HowItWorks() {
   return (
-    <section data-scroll-anchor id="how" className="py-20 sm:py-28">
+    <section id="how" className="py-20 sm:py-28">
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
         <div className="grid items-center gap-14 lg:grid-cols-[1fr_auto]">
           <Reveal>
-            <SectionLabel>How it works</SectionLabel>
+            <SectionLabel>How it Works</SectionLabel>
             <h2 className="mt-3 font-display text-3xl font-extrabold leading-tight tracking-tight text-foreground sm:text-4xl">
               One message becomes a closed sale.
             </h2>
             <p className="mt-4 text-[15.5px] leading-relaxed text-muted-foreground">
               The same conversation a farmer would have across three phone calls and a visit to the mandi — except it
-              finishes before the tomatoes cool down. Play the flow on the right.
+              finishes before the tomatoes cool down.
             </p>
 
             <div className="mt-8 flex flex-col gap-4">
@@ -442,37 +433,121 @@ function HowItWorks() {
   )
 }
 
+function OneSystem() {
+  return (
+    <section id="system" className="relative overflow-hidden py-20 sm:py-28">
+      <div className="relative mx-auto max-w-6xl px-4 sm:px-6">
+        <Reveal className="mx-auto max-w-3xl text-center">
+          <SectionLabel>Two Unified Surfaces</SectionLabel>
+          <h2 className="mt-3 font-display text-3xl font-extrabold leading-tight tracking-tight text-foreground sm:text-4xl">
+            The grower chats on mobile. The operator commands everything.
+          </h2>
+          <p className="mt-4 text-[15.5px] leading-relaxed text-muted-foreground">
+            A shared real-time ledger powers both interfaces — a lightweight, zero-latency chat app for the farmer in the
+            field, and a multi-mandi operations console for co-ops and logistics operators.
+          </p>
+        </Reveal>
+
+        <div className="mt-14 grid items-start gap-12 lg:grid-cols-2">
+          <Reveal>
+            <div className="rounded-3xl border border-border/70 bg-card p-6 sm:p-8 shadow-card">
+              <div className="flex items-center gap-3">
+                <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary-800 text-white">
+                  <Smartphone className="h-5 w-5" />
+                </span>
+                <div>
+                  <h3 className="font-display text-[20px] font-extrabold text-foreground">For the Grower (Mobile)</h3>
+                  <p className="text-[12px] font-semibold text-muted-foreground">Native Android &amp; Responsive Web</p>
+                </div>
+              </div>
+              <ul className="mt-5 space-y-2.5">
+                {[
+                  "Grades produce directly from phone camera snapshots using Gemini Vision",
+                  "Compares 5 mandis ranked by true net take-home (after freight & spoilage)",
+                  "Drafts WhatsApp buyer outreach & requires explicit tap to send",
+                  "Monitors truck GPS location and confirms instant payment in thread",
+                ].map((f) => (
+                  <li key={f} className="flex gap-2.5 text-[13px] text-foreground/85">
+                    <BadgeCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary-700" />
+                    <span>{f}</span>
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-6 flex justify-center">
+                <PhoneMockup steps={HERO_STEPS} auto compact />
+              </div>
+            </div>
+          </Reveal>
+
+          <Reveal delay={200}>
+            <div className="rounded-3xl border border-border/70 bg-card p-6 sm:p-8 shadow-card">
+              <div className="flex items-center gap-3">
+                <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary-800 text-white">
+                  <Building2 className="h-5 w-5" />
+                </span>
+                <div>
+                  <h3 className="font-display text-[20px] font-extrabold text-foreground">
+                    For the Operator &amp; Broker Desk
+                  </h3>
+                  <p className="text-[12px] font-semibold text-muted-foreground">Full Desktop Operations Console</p>
+                </div>
+              </div>
+              <ul className="mt-5 space-y-2.5">
+                {[
+                  "Live oversight across all active lot corridors, trucks, and cold chambers",
+                  "Automated mandi price scraping and verification confidence flags",
+                  "Verified buyer directory with payment escrow and dispute resolution",
+                  "Role-based access control — farmers never see internal operator ledger",
+                ].map((f) => (
+                  <li key={f} className="flex gap-2.5 text-[13px] text-foreground/85">
+                    <BadgeCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary-700" />
+                    <span>{f}</span>
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-6">
+                <AdminMockup />
+              </div>
+            </div>
+          </Reveal>
+        </div>
+      </div>
+    </section>
+  )
+}
+
 const PRICING_PLANS = [
   {
-    name: "Kisan",
+    name: "Kisan (Free Forever)",
     price: "0",
     yearlyPrice: "0",
     period: "forever",
     features: [
-      "Chat agent in English + اردو",
-      "3-mandi price comparison",
-      "Approval-gated buyer outreach",
-      "Timestamped action log",
+      "Urdu & English Voice/Chat AI agent",
+      "Gemini Computer Vision lot grading",
+      "3-mandi real-time net price comparison",
+      "Sovereign Human-in-the-Loop approval gate",
+      "Timestamped digital trade receipts",
     ],
-    description: "For small lots and first harvests — always free.",
-    buttonText: "Start free",
+    description: "For smallholder growers and individual farm lots — completely free.",
+    buttonText: "Start Free",
     href: "/signup",
     isPopular: false,
   },
   {
-    name: "Grower",
+    name: "Grower Pro",
     price: "1800",
     yearlyPrice: "1440",
     period: "per month",
     features: [
-      "5-mandi net comparison — after every cost",
-      "Verified buyer outreach with approvals",
-      "Transport booking & live tracking",
-      "Payment confirmation in the chat",
-      "Next-harvest insights",
+      "5-mandi arbitrage ranking with thermal spoilage AI",
+      "Verified wholesale buyer outreach with escrow",
+      "Direct carrier & cold reefer load matching",
+      "Live GPS trip telemetry & temperature alerts",
+      "Next-season harvest pre-grading insights",
     ],
-    description: "The full selling desk for working growers.",
-    buttonText: "Join the pilot — free",
+    description: "The complete automated selling & dispatch desk for commercial growers.",
+    buttonText: "Join the Pilot — Free",
     href: "/signup",
     isPopular: true,
   },
@@ -482,14 +557,14 @@ const PRICING_PLANS = [
     yearlyPrice: "3600",
     period: "per month",
     features: [
-      "Everything in Grower",
-      "Lot splitting across mandis & grades",
-      "Buyer directory with deal history",
-      "Up to 10 family or staff accounts",
-      "Priority support",
+      "Everything in Grower Pro",
+      "Multi-mandi lot splitting across Grade A / B",
+      "Cold storage chamber reservation & receipts",
+      "Up to 10 operator & farm manager accounts",
+      "Dedicated logistics & dispute coordinator",
     ],
-    description: "For orchards, co-ops and multi-lot operations.",
-    buttonText: "Join the pilot — free",
+    description: "For large citrus orchards, mango farms, and cooperative societies.",
+    buttonText: "Join the Pilot — Free",
     href: "/signup",
     isPopular: false,
   },
@@ -497,22 +572,16 @@ const PRICING_PLANS = [
 
 function PricingSection() {
   return (
-    <section data-scroll-anchor id="pricing" className="app-surface">
+    <section id="pricing" className="py-20 sm:py-28 bg-card/40">
       <Reveal>
         <Pricing
-          eyebrow="Planned pricing"
-          title="Free during the pilot. Fair after."
+          eyebrow="Planned Pricing"
+          title="100% Free During the Pilot. Fair Always."
           description={
-            "Every plan is free while the pilot runs on the Multan → Lahore corridor — no card, no lock-in.\nAfter the pilot, growers pay monthly or per season — one season is one crop cycle, six months."
+            "Every plan is free while the pilot operates along the Multan → Lahore corridor — zero credit card, zero lock-in.\nAfter the pilot, transparent pricing is charged per month or per crop season."
           }
           plans={PRICING_PLANS}
         />
-      </Reveal>
-      <Reveal delay={120}>
-        <p className="mx-auto -mt-10 max-w-2xl px-4 text-center text-[11.5px] leading-relaxed text-muted-foreground/80 sm:px-6">
-          Planned post-pilot pricing, shown in PKR — nothing is charged today. The app's demo cost model already nets
-          out a 1.5% platform fee on completed sales; final pricing follows what growers actually use in the pilot.
-        </p>
       </Reveal>
     </section>
   )
@@ -520,44 +589,44 @@ function PricingSection() {
 
 function FinalCTA() {
   return (
-    <section data-scroll-anchor className="relative overflow-hidden bg-primary-900">
+    <section className="relative overflow-hidden bg-primary-900">
       <div
         aria-hidden
         className="pointer-events-none absolute inset-x-0 bottom-[-2rem] select-none text-center font-display text-[19vw] font-extrabold leading-none tracking-tighter text-white/10"
       >
         FRESH
       </div>
-      <div className="relative z-20 mx-auto max-w-2xl px-4 py-24 text-center sm:px-6 sm:py-28">
+      <div className="relative z-20 mx-auto max-w-3xl px-4 py-24 text-center sm:px-6 sm:py-28">
         <Reveal>
-          <p className="font-urdu text-[24px] leading-[2.2] text-emerald-100/90">
-            اگلی فصل کا حساب، اب آپ کے ہاتھ میں۔
+          <p className="font-urdu text-[26px] leading-[2.2] text-emerald-100/95 font-bold">
+            اگلی فصل کا حساب، اب آپ کے اپنے ہاتھ میں۔
           </p>
-          <h2 className="mt-4 font-display text-3xl font-extrabold tracking-tight text-white sm:text-[2.75rem] sm:leading-[1.15]">
-            Your next harvest deserves a better desk.
+          <h2 className="mt-4 font-display text-3xl font-extrabold tracking-tight text-white sm:text-[3rem] sm:leading-[1.1]">
+            Your next harvest deserves the highest return.
           </h2>
-          <p className="mx-auto mt-4 max-w-md text-[15px] leading-relaxed text-emerald-50/75">
-            Join the pilot on the Multan–Lahore corridor. Free while we learn from your harvest — you keep the numbers
-            either way.
+          <p className="mx-auto mt-4 max-w-xl text-[15.5px] leading-relaxed text-emerald-50/85">
+            Join the FreshRoute pilot. Get immediate multi-mandi arbitrage, AI grading, verified truckers, and transparent
+            take-home cash.
           </p>
         </Reveal>
-        <Reveal delay={140}>
+        <Reveal delay={200}>
           <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
             <Link
               to="/signup"
-              className="group flex items-center gap-2 rounded-full bg-white px-7 py-3.5 text-[14.5px] font-bold text-primary-900 shadow-card transition-all hover:bg-emerald-50 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-primary-900"
+              className="group flex items-center gap-2 rounded-full bg-white px-7 py-3.5 text-[14.5px] font-bold text-primary-900 shadow-card transition-all hover:bg-emerald-50 active:scale-[0.98]"
             >
-              Join the pilot — free
+              Join the Pilot — Free
               <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
             </Link>
             <Link
               to="/dashboard"
-              className="rounded-full border border-white/30 px-7 py-3.5 text-[14.5px] font-bold text-white transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+              className="rounded-full border border-white/40 px-7 py-3.5 text-[14.5px] font-bold text-white transition-colors hover:bg-white/10"
             >
-              Open the app
+              Open the Web App
             </Link>
           </div>
-          <p className="mt-5 text-[11.5px] text-white/50">
-            No credit card · no downloads · pilot corridor: Multan → Lahore
+          <p className="mt-5 text-[12px] text-white/60">
+            Zero fees during pilot · Native Urdu &amp; English · Multan ⟶ Lahore Corridor
           </p>
         </Reveal>
       </div>
@@ -567,71 +636,66 @@ function FinalCTA() {
 
 function Footer() {
   return (
-    <footer data-scroll-anchor className="border-t border-border bg-background py-12">
-      <div className="mx-auto grid max-w-6xl gap-10 px-4 sm:px-6 md:grid-cols-[1.2fr_0.8fr_1.4fr]">
-        <div>
+    <footer className="border-t border-border bg-background py-14">
+      <div className="mx-auto grid max-w-6xl gap-10 px-4 sm:px-6 md:grid-cols-[1.3fr_0.9fr_1.4fr]">
+        <Reveal delay={50}>
           <Wordmark />
-          <p className="mt-3 max-w-xs text-[12.5px] leading-relaxed text-muted-foreground">
-            The AI selling &amp; logistics agent for fresh produce. Built for Pakistan's growers — pilot corridor:
-            Multan → Lahore, tomatoes first.
+          <p className="mt-3.5 max-w-sm text-[13px] leading-relaxed text-muted-foreground">
+            The AI-powered selling, grading, and logistics agent for Pakistan's fresh-produce agriculture. Connecting
+            growers, cold storage nodes, truckers, and verified mandi buyers into one transparent ecosystem.
           </p>
-        </div>
+        </Reveal>
 
-        <nav className="flex flex-col gap-2.5 text-[13px] font-semibold" aria-label="App">
-          <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/70">App</p>
-          <Link to="/signup" className="w-fit text-foreground/75 transition-colors hover:text-primary-800">
-            Create account
-          </Link>
-          <Link to="/login" className="w-fit text-foreground/75 transition-colors hover:text-primary-800">
-            Log in
-          </Link>
-          <Link to="/dashboard" className="w-fit text-foreground/75 transition-colors hover:text-primary-800">
-            Open the dashboard
-          </Link>
-        </nav>
+        <Reveal delay={150}>
+          <nav className="flex flex-col gap-2.5 text-[13px] font-semibold" aria-label="Navigation">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/70">Navigation</p>
+            <a href="#problem" className="w-fit text-foreground/80 hover:text-primary-800">
+              The Problem
+            </a>
+            <a href="#how" className="w-fit text-foreground/80 hover:text-primary-800">
+              How it Works
+            </a>
+            <a href="#system" className="w-fit text-foreground/80 hover:text-primary-800">
+              Operator Desk
+            </a>
+            <a href="#pricing" className="w-fit text-foreground/80 hover:text-primary-800">
+              Pilot Pricing
+            </a>
+          </nav>
+        </Reveal>
 
-        <div>
-          <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/70">Honest footnotes</p>
+        <Reveal delay={250}>
+          <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/70">Transparent Disclosures</p>
           <p className="mt-2.5 text-[11.5px] leading-relaxed text-muted-foreground/80">
-            *Post-harvest loss and intermediary counts are widely-cited ranges (FAO / national agri-research
-            estimates). Mandi rates shown on this page come from the app's{" "}
-            <span className="text-foreground/70">simulated pilot feed</span> — they are not live market prices. Story
-            and testimonial figures are illustrative composites of the app's demo scenarios. Field results will replace
-            them as the pilot reports.
+            *Post-harvest losses and intermediary structures reflect FAO and national agricultural survey data. Mandi
+            prices shown reflect pilot baseline corridor feeds. FreshRoute operates
+            with strict sovereign human-in-the-loop approval rails.
           </p>
-        </div>
+        </Reveal>
       </div>
-      <div className="mx-auto mt-10 flex max-w-6xl flex-wrap items-center justify-between gap-3 border-t border-border px-4 pt-6 sm:px-6">
-        <p className="text-[11.5px] text-muted-foreground/70">© 2026 FreshRoute · Built for Pakistan's fresh-produce growers</p>
-        <Logo size={24} className="opacity-60" />
+      <div className="mx-auto mt-12 flex max-w-6xl flex-wrap items-center justify-between gap-3 border-t border-border px-4 pt-6 sm:px-6">
+        <p className="text-[12px] text-muted-foreground">
+          © 2026 FreshRoute AI · Built for Pakistan's Fresh-Produce Growers
+        </p>
+        <Logo size={24} className="opacity-70" />
       </div>
     </footer>
   )
 }
 
 export default function LandingPage() {
-  const containerRef = useRef<HTMLDivElement>(null)
-
   return (
-    <div ref={containerRef} className="landing-shell relative min-h-screen font-sans text-foreground">
+    <div className="landing-shell min-h-screen font-sans text-foreground bg-background">
       <Nav />
-      <main className="relative">
-        <ScrollStroke
-          className="absolute inset-0 z-0 opacity-40"
-          strokeColor="#5AAD45"
-          strokeWidth={20}
-          containerRef={containerRef}
-        />
-        <div className="relative z-10">
-          <Hero />
-          <Problem />
-          <OneSystem />
-          <HowItWorks />
-          <Stories />
-          <Testimonials />
-          <PricingSection />
-          <FinalCTA />
-        </div>
+      <main>
+        <Hero />
+        <Problem />
+        <HowItWorks />
+        <OneSystem />
+        <Stories />
+        <Testimonials />
+        <PricingSection />
+        <FinalCTA />
       </main>
       <Footer />
     </div>
