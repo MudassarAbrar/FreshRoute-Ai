@@ -72,7 +72,7 @@ async function callProxy(body: Record<string, unknown>): Promise<ProxyData> {
     "gemini-proxy",
     async () => {
       const started = Date.now()
-      const { data, error } = await supabase.functions.invoke("gemini-proxy", { body })
+      const { data, error } = await supabase.functions.invoke("smart-action", { body })
       const latencyMs = Date.now() - started
 
       // Log to Firestore (non-blocking, fire-and-forget)
