@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FreshRoute — Architecture Diagram</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --border: #2a2d3a;
+    --text: #e4e4e7;
+    --text-dim: #9ca3af;
+    --user: #60a5fa;
+    --user-bg: #1e3a5f;
+    --frontend: #34d399;
+    --frontend-bg: #064e3b;
+    --auth: #a78bfa;
+    --auth-bg: #3b1f6e;
+    --data: #fb923c;
+    --data-bg: #5c2d0e;
+    --ai: #f472b6;
+    --ai-bg: #5c1a3a;
+    --obs: #22d3ee;
+    --obs-bg: #0e4a5c;
+    --arrow: #6b7280;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 40px;
+    min-height: 100vh;
+  }
+  .title {
+    text-align: center;
+    margin-bottom: 8px;
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+  }
+  .subtitle {
+    text-align: center;
+    color: var(--text-dim);
+    font-size: 14px;
+    margin-bottom: 40px;
+  }
+  .diagram {
+    display: flex;
+    gap: 24px;
+    align-items: stretch;
+    max-width: 1600px;
+    margin: 0 auto 40px;
+    min-height: 620px;
+  }
+  .tier {
+    flex: 1;
+    border-radius: 16px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    position: relative;
+    border: 1px solid;
+  }
+  .tier-label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 4px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid;
+  }
+  .tier--user { background: var(--user-bg); border-color: var(--user); }
+  .tier--user .tier-label { color: var(--user); border-color: rgba(96,165,250,0.3); }
+  .tier--frontend { background: var(--frontend-bg); border-color: var(--frontend); }
+  .tier--frontend .tier-label { color: var(--frontend); border-color: rgba(52,211,153,0.3); }
+  .tier--auth { background: var(--auth-bg); border-color: var(--auth); }
+  .tier--auth .tier-label { color: var(--auth); border-color: rgba(167,139,250,0.3); }
+  .tier--data { background: var(--data-bg); border-color: var(--data); }
+  .tier--data .tier-label { color: var(--data); border-color: rgba(251,146,60,0.3); }
+  .tier--ai { background: var(--ai-bg); border-color: var(--ai); }
+  .tier--ai .tier-label { color: var(--ai); border-color: rgba(244,114,182,0.3); }
+  .tier--obs { background: var(--obs-bg); border-color: var(--obs); }
+  .tier--obs .tier-label { color: var(--obs); border-color: rgba(34,211,238,0.3); }
+
+  .node {
+    background: rgba(0,0,0,0.35);
+    border-radius: 10px;
+    padding: 14px 16px;
+    border: 1px solid rgba(255,255,255,0.08);
+    transition: transform 0.15s, box-shadow 0.15s;
+  }
+  .node:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  }
+  .node-title {
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .node-runtime {
+    font-size: 10px;
+    color: var(--text-dim);
+    font-weight: 500;
+    background: rgba(255,255,255,0.06);
+    padding: 2px 8px;
+    border-radius: 4px;
+    display: inline-block;
+    margin-bottom: 6px;
+  }
+  .node-detail {
+    font-size: 11px;
+    color: var(--text-dim);
+    line-height: 1.5;
+  }
+  .node-detail code {
+    background: rgba(255,255,255,0.08);
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-size: 10px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .badge {
+    display: inline-block;
+    font-size: 9px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-left: 4px;
+  }
+  .badge--https { background: #065f46; color: #6ee7b7; }
+  .badge--sdk { background: #1e3a5f; color: #93c5fd; }
+  .badge--sdk-orange { background: #5c2d0e; color: #fdba74; }
+  .badge--wss { background: #4c1d95; color: #c4b5fd; }
+  .badge--rest { background: #5c1a3a; color: #f9a8d4; }
+
+  .arrows-section {
+    max-width: 1600px;
+    margin: 0 auto 40px;
+    background: var(--surface);
+    border-radius: 16px;
+    padding: 24px 32px;
+    border: 1px solid var(--border);
+  }
+  .arrows-title {
+    font-size: 14px;
+    font-weight: 700;
+    margin-bottom: 16px;
+    color: var(--text);
+  }
+  .flow-list {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px 32px;
+  }
+  .flow-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 12px;
+    padding: 8px 12px;
+    background: rgba(0,0,0,0.2);
+    border-radius: 8px;
+  }
+  .flow-arrow {
+    color: var(--frontend);
+    font-weight: 700;
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+  .flow-path {
+    color: var(--text);
+    font-weight: 500;
+  }
+  .flow-protocol {
+    color: var(--text-dim);
+    font-size: 10px;
+    margin-left: auto;
+    flex-shrink: 0;
+  }
+
+  .legend {
+    max-width: 1600px;
+    margin: 0 auto;
+    background: var(--surface);
+    border-radius: 16px;
+    padding: 24px 32px;
+    border: 1px solid var(--border);
+  }
+  .legend-title {
+    font-size: 14px;
+    font-weight: 700;
+    margin-bottom: 16px;
+  }
+  .legend-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 12px;
+  }
+  .legend-swatch {
+    width: 16px;
+    height: 16px;
+    border-radius: 4px;
+    flex-shrink: 0;
+    border: 2px solid;
+  }
+  .legend-line {
+    width: 32px;
+    height: 2px;
+    flex-shrink: 0;
+    border-radius: 1px;
+  }
+
+  .section-divider {
+    max-width: 1600px;
+    margin: 24px auto;
+    border: none;
+    border-top: 1px dashed var(--border);
+  }
+
+  @media (max-width: 1200px) {
+    .diagram { flex-direction: column; }
+    .flow-list { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="title">FreshRoute — System Architecture</div>
+<div class="subtitle">AI-Powered Produce Trading Assistant · Vite + React 19 SPA · Supabase + Firebase + Google Gemini</div>
+
+<div class="diagram">
+
+  <!-- TIER 1: USER LAYER -->
+  <div class="tier tier--user" style="flex: 0.7;">
+    <div class="tier-label">User Layer</div>
+    <div class="node">
+      <div class="node-title">🧑‍🌾 End User (Browser)</div>
+      <div class="node-runtime">Client · Chrome / Mobile WebView</div>
+      <div class="node-detail">
+        Pakistani farmers, buyers, transporters<br>
+        Multi-role: <code>farmer</code> <code>buyer</code> <code>transporter</code> <code>storage_provider</code> <code>admin</code><br>
+        Bilingual: English + Urdu (Noto Nastaliq)
+      </div>
+    </div>
+    <div class="node" style="margin-top: auto;">
+      <div class="node-title">📱 PWA Capable</div>
+      <div class="node-runtime">Vercel Static CDN</div>
+      <div class="node-detail">
+        Lazy-loaded routes via <code>React.lazy()</code><br>
+        PhoneFrame container component<br>
+        Responsive mobile-first UI
+      </div>
+    </div>
+  </div>
+
+  <!-- TIER 2: FRONTEND -->
+  <div class="tier tier--frontend" style="flex: 1.3;">
+    <div class="tier-label">Frontend — Vercel Static Hosting</div>
+    <div class="node">
+      <div class="node-title">⚛️ React 19 + Vite 8 + TypeScript</div>
+      <div class="node-runtime">Vercel — Static Edge</div>
+      <div class="node-detail">
+        18 page components (lazy-loaded)<br>
+        <code>ProtectedRoute</code> guards (auth + admin)<br>
+        <code>AppLayout</code> / <code>AdminLayout</code> wrappers
+      </div>
+    </div>
+    <div class="node">
+      <div class="node-title">🗂 Zustand 5 State Store</div>
+      <div class="node-runtime">In-Memory · Client-Side</div>
+      <div class="node-detail">
+        <code>useApp</code> — stage, msgs, lot, scenarios, audit, session, profile, userRoles, aiMode<br>
+        <code>director.ts</code> — workflow orchestrator (ADK agent routing)<br>
+        <code>orderStateMachine.ts</code> — formal state transitions + audit
+      </div>
+    </div>
+    <div class="node">
+      <div class="node-title">🧭 React Router DOM 7</div>
+      <div class="node-runtime">Client-Side Routing</div>
+      <div class="node-detail">
+        Public: <code>/login</code> <code>/signup</code> <code>/</code> (landing)<br>
+        Protected: <code>/dashboard</code> <code>/orders</code> <code>/chat</code> <code>/listings/*</code><br>
+        Admin: <code>/admin/dashboard</code> <code>/admin/users</code> <code>/admin/analytics</code> <code>/admin/settings</code>
+      </div>
+    </div>
+    <div class="node">
+      <div class="node-title">🛡 Resilience Layer</div>
+      <div class="node-runtime">Client-Side Guardrails</div>
+      <div class="node-detail">
+        <code>circuitBreaker</code> — opens after 3 failures, 60s cooldown<br>
+        <code>rateLimiter</code> — 30 agent interactions/hr, 5 actions/order<br>
+        <code>planner.ts</code> — domain guardrails (off-topic rejection)
+      </div>
+    </div>
+    <div class="node">
+      <div class="node-title">📊 UI Libraries</div>
+      <div class="node-runtime">Tailwind 3.4 · Recharts 3 · Lucide</div>
+      <div class="node-detail">
+        Custom design tokens, dark mode, Plus Jakarta Sans font<br>
+        shadcn/ui components (@/components/ui)<br>
+        Recharts for admin analytics dashboards
+      </div>
+    </div>
+  </div>
+
+  <!-- TIER 3: IDENTITY & AUTH -->
+  <div class="tier tier--auth" style="flex: 0.9;">
+    <div class="tier-label">Identity & Auth</div>
+    <div class="node">
+      <div class="node-title">🔐 Firebase Auth</div>
+      <div class="node-runtime">Firebase SDK 11.10 · Client-Side</div>
+      <div class="node-detail">
+        <code>createUserWithEmailAndPassword</code><br>
+        <code>signInWithEmailAndPassword</code><br>
+        <code>signInWithPopup</code> (Google OAuth)<br>
+        <code>sendPasswordResetEmail</code>
+      </div>
+    </div>
+    <div class="node">
+      <div class="node-title">🔄 Auth State Sync</div>
+      <div class="node-runtime">onAuthStateChanged Observer</div>
+      <div class="node-detail">
+        Drives <code>ProtectedRoute</code> gating<br>
+        On sign-in: writes <code>user_profiles/{uid}</code> to Firestore<br>
+        Creates/fetches Supabase profile<br>
+        Loads <code>user_roles</code> for multi-role access
+      </div>
+    </div>
+    <div class="node">
+      <div class="node-title">🎫 JWT Token Flow</div>
+      <div class="node-runtime">Firebase ID Token → Supabase</div>
+      <div class="node-detail">
+        <code>getFirebaseIdToken()</code> for API calls<br>
+        JWT verified in gemini-proxy Edge Function<br>
+        Supabase RLS policies on all tables
+      </div>
+    </div>
+  </div>
+
+  <!-- TIER 4: DATA & REALTIME -->
+  <div class="tier tier--data" style="flex: 1.2;">
+    <div class="tier-label">Data & Realtime</div>
+    <div class="node">
+      <div class="node-title">🐘 Supabase PostgreSQL</div>
+      <div class="node-runtime">Supabase — Managed Postgres</div>
+      <div class="node-detail">
+        8 migration files defining schema:<br>
+        <code>profiles</code> · <code>orders</code> · <code>order_events</code> · <code>listings</code> · <code>offers</code> · <code>messages</code> · <code>user_roles</code> · <code>agent_action_log</code> · <code>ai_usage</code> · <code>notifications</code> · <code>reviews</code> · <code>transport_bookings</code> · <code>storage_bookings</code>
+      </div>
+    </div>
+    <div class="node">
+      <div class="node-title">⚡ gemini-proxy Edge Function</div>
+      <div class="node-runtime">Supabase Edge Function — Deno</div>
+      <div class="node-detail">
+        <strong>ONLY location of Gemini API key</strong><br>
+        Actions: <code>status</code> · <code>extract</code> · <code>vision</code> · <code>chat</code> · <code>agent-turn</code><br>
+        JWT verification · Session management (multi-turn)<br>
+        12+ ADK FunctionTools with approval gates<br>
+        Logs to <code>ai_usage</code> table
+      </div>
+    </div>
+    <div class="node">
+      <div class="node-title">🔍 monitor-check Edge Function</div>
+      <div class="node-runtime">Supabase Edge Function — Deno</div>
+      <div class="node-detail">
+        Background health monitoring:<br>
+        • Spoilage threshold alerts<br>
+        • Stuck order detection (>4h no status change)<br>
+        • Provider timeout checks (>4h pending)<br>
+        Invokes ADK agent to re-plan stuck orders
+      </div>
+    </div>
+    <div class="node">
+      <div class="node-title">🔥 Cloud Firestore</div>
+      <div class="node-runtime">Firebase — Realtime NoSQL</div>
+      <div class="node-detail">
+        <code>user_profiles/{uid}</code> — lightweight user profile<br>
+        <code>ai_usage</code> collection — non-blocking telemetry writes<br>
+        <code>onSnapshot</code> subscriptions for live admin dashboard
+      </div>
+    </div>
+  </div>
+
+  <!-- TIER 5: AI LAYER -->
+  <div class="tier tier--ai" style="flex: 1;">
+    <div class="tier-label">AI Layer — Google Cloud</div>
+    <div class="node">
+      <div class="node-title">🤖 Google Gemini API</div>
+      <div class="node-runtime">Google Cloud — Gemini Models</div>
+      <div class="node-detail">
+        Called exclusively via <code>gemini-proxy</code> Edge Function<br>
+        <strong>Text extraction:</strong> lot data from natural language<br>
+        <strong>Vision:</strong> produce photo quality grading<br>
+        <strong>Chat:</strong> free-form assistant conversation<br>
+        <strong>Agent:</strong> ADK agent with function-calling loop
+      </div>
+    </div>
+    <div class="node">
+      <div class="node-title">🧠 ADK Agent Runtime</div>
+      <div class="node-runtime">Google ADK 2.0 · InMemoryRunner</div>
+      <div class="node-detail">
+        12+ FunctionTools:<br>
+        <code>get_lot_details</code> · <code>calculate_spoilage_risk</code> · <code>search_buyers</code> · <code>get_transport_quotes</code> · <code>get_storage_quotes</code> · <code>draft_offer_message</code> · <code>send_offer_message</code>* · <code>book_transport</code>* · <code>book_storage</code>* · <code>schedule_reminder</code> · <code>update_order_status</code>*<br>
+        <em>* = requires user approval</em>
+      </div>
+    </div>
+    <div class="node">
+      <div class="node-title">📋 Usage Logging</div>
+      <div class="node-runtime">Dual-Write · Supabase + Firestore</div>
+      <div class="node-detail">
+        Every Gemini call logged:<br>
+        → <code>ai_usage</code> table (Supabase Postgres)<br>
+        → <code>ai_usage</code> collection (Firestore realtime)<br>
+        Includes: model, tokens, latency, user_id, action
+      </div>
+    </div>
+  </div>
+
+  <!-- TIER 6: OBSERVABILITY -->
+  <div class="tier tier--obs" style="flex: 0.7;">
+    <div class="tier-label">Observability</div>
+    <div class="node">
+      <div class="node-title">📊 Admin Settings Page</div>
+      <div class="node-runtime">React Component · Protected (Admin)</div>
+      <div class="node-detail">
+        <code>subscribeToAiUsage()</code> — live Firestore subscription<br>
+        Real-time AI usage dashboard<br>
+        AI mode badge (<code>live</code> / <code>demo</code> / <code>error</code>)<br>
+        Health check trigger
+      </div>
+    </div>
+    <div class="node">
+      <div class="node-title">📈 Admin Analytics</div>
+      <div class="node-runtime">Recharts 3 · Supabase Queries</div>
+      <div class="node-detail">
+        System-wide stats, order analytics<br>
+        User management, order management<br>
+        Revenue tracking via <code>RevenuePage</code>
+      </div>
+    </div>
+    <div class="node">
+      <div class="node-title">📝 Audit Trail</div>
+      <div class="node-runtime">Client + Supabase</div>
+      <div class="node-detail">
+        <code>AuditDrawer</code> — always-visible in-app log<br>
+        <code>order_events</code> table — state machine transitions<br>
+        <code>agent_action_log</code> — ADK tool execution history
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- CONNECTION FLOWS -->
+<div class="arrows-section">
+  <div class="arrows-title">↗ Connection Flows (Direction & Protocol)</div>
+  <div class="flow-list">
+    <div class="flow-item">
+      <span class="flow-arrow">→</span>
+      <span class="flow-path">Browser → Vercel Static CDN</span>
+      <span class="flow-protocol">HTTPS · Static assets</span>
+    </div>
+    <div class="flow-item">
+      <span class="flow-arrow">→</span>
+      <span class="flow-path">React App → Firebase Auth</span>
+      <span class="flow-protocol">HTTPS · Firebase SDK</span>
+    </div>
+    <div class="flow-item">
+      <span class="flow-arrow">→</span>
+      <span class="flow-path">React App → Supabase Postgres</span>
+      <span class="flow-protocol">HTTPS · supabase-js SDK</span>
+    </div>
+    <div class="flow-item">
+      <span class="flow-arrow">→</span>
+      <span class="flow-path">React App → gemini-proxy Edge Function</span>
+      <span class="flow-protocol">HTTPS · supabase-js .functions.invoke()</span>
+    </div>
+    <div class="flow-item">
+      <span class="flow-arrow">→</span>
+      <span class="flow-path">gemini-proxy → Google Gemini API</span>
+      <span class="flow-protocol">HTTPS · @google/genai SDK (Deno)</span>
+    </div>
+    <div class="flow-item">
+      <span class="flow-arrow">→</span>
+      <span class="flow-path">gemini-proxy → Supabase Postgres (ai_usage)</span>
+      <span class="flow-protocol">Internal · service_role key</span>
+    </div>
+    <div class="flow-item">
+      <span class="flow-arrow">→</span>
+      <span class="flow-path">React App → Firestore (ai_usage writes)</span>
+      <span class="flow-protocol">HTTPS · Firebase SDK (non-blocking)</span>
+    </div>
+    <div class="flow-item">
+      <span class="flow-arrow">←</span>
+      <span class="flow-path">Firestore → AdminSettingsPage (live updates)</span>
+      <span class="flow-protocol">WSS · onSnapshot subscription</span>
+    </div>
+    <div class="flow-item">
+      <span class="flow-arrow">→</span>
+      <span class="flow-path">monitor-check → gemini-proxy (re-plan stuck orders)</span>
+      <span class="flow-protocol">HTTPS · Internal Edge Function call</span>
+    </div>
+    <div class="flow-item">
+      <span class="flow-arrow">→</span>
+      <span class="flow-path">Auth State → ProtectedRoute (gating)</span>
+      <span class="flow-protocol">Event · onAuthStateChanged observer</span>
+    </div>
+    <div class="flow-item">
+      <span class="flow-arrow">→</span>
+      <span class="flow-path">director.ts → Zustand Store (state mutations)</span>
+      <span class="flow-protocol">In-Memory · useApp.getState()</span>
+    </div>
+    <div class="flow-item">
+      <span class="flow-arrow">→</span>
+      <span class="flow-path">ADK Agent → 12+ FunctionTools (tool execution)</span>
+      <span class="flow-protocol">In-Process · Deno runtime</span>
+    </div>
+  </div>
+</div>
+
+<!-- LEGEND -->
+<div class="legend">
+  <div class="legend-title">Legend</div>
+  <div class="legend-grid">
+    <div class="legend-item">
+      <div class="legend-swatch" style="background: var(--user-bg); border-color: var(--user);"></div>
+      <span>User Layer (Browser / Client)</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-swatch" style="background: var(--frontend-bg); border-color: var(--frontend);"></div>
+      <span>Frontend (Vercel Static Edge)</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-swatch" style="background: var(--auth-bg); border-color: var(--auth);"></div>
+      <span>Identity & Auth (Firebase)</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-swatch" style="background: var(--data-bg); border-color: var(--data);"></div>
+      <span>Data & Realtime (Supabase + Firestore)</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-swatch" style="background: var(--ai-bg); border-color: var(--ai);"></div>
+      <span>AI Layer (Google Gemini + ADK)</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-swatch" style="background: var(--obs-bg); border-color: var(--obs);"></div>
+      <span>Observability (Admin Dashboard)</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-line" style="background: var(--frontend);"></div>
+      <span>HTTPS — REST / SDK call</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-line" style="background: var(--auth); border-top: 2px dashed var(--auth); height: 0;"></div>
+      <span>WSS — WebSocket / Realtime subscription</span>
+    </div>
+    <div class="legend-item">
+      <span class="badge badge--sdk" style="margin-left: 0;">SDK</span>
+      <span>Client SDK integration</span>
+    </div>
+    <div class="legend-item">
+      <span class="badge badge--https" style="margin-left: 0;">HTTPS</span>
+      <span>Standard HTTPS API call</span>
+    </div>
+    <div class="legend-item">
+      <span style="font-size: 11px; color: var(--text-dim);">* = requires user approval</span>
+      <span>Write operations gated by human consent</span>
+    </div>
+    <div class="legend-item">
+      <span style="font-size: 11px; color: var(--text-dim);">🔑 = API key isolated server-side</span>
+      <span>Gemini key only in Edge Function</span>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

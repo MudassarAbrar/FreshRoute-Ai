@@ -1,5 +1,5 @@
 @import url("https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu:wght@400;600;700&display=swap");
-@import "tw-shimmer";
+/* tw-shimmer removed — requires Tailwind v4; shimmer keyframes defined below */
 
 @font-face {
   font-family: "Milker";
@@ -140,25 +140,19 @@
   }
 }
 
-@custom-variant data-open (&:where([data-state="open"], [data-open]:not([data-open="false"])));
+/* data-open / data-closed variants — built-in with Tailwind v3 via data-[state=open]: and data-[state=closed]: */
 
-@custom-variant data-closed (&:where([data-state="closed"], [data-closed]:not([data-closed="false"])));
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
 
-@theme inline {
-  @keyframes collapsible-down {
-  from {
-    height: 0;
-    }
-  to {
-    height: var(--radix-collapsible-content-height, var(--collapsible-panel-height, auto));
-    }
-  }
-  @keyframes collapsible-up {
-  from {
-    height: var(--radix-collapsible-content-height, var(--collapsible-panel-height, auto));
-    }
-  to {
-    height: 0;
-    }
-  }
+@keyframes collapsible-down {
+  from { height: 0; }
+  to { height: var(--radix-collapsible-content-height, var(--collapsible-panel-height, auto)); }
+}
+
+@keyframes collapsible-up {
+  from { height: var(--radix-collapsible-content-height, var(--collapsible-panel-height, auto)); }
+  to { height: 0; }
 }

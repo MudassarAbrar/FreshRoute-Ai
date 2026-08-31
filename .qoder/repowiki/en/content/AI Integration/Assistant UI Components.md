@@ -7,13 +7,25 @@
 - [markdown-text.tsx](file://freshroute/src/components/assistant-ui/elements/markdown-text.tsx)
 - [reasoning.aui.tsx](file://freshroute/src/components/assistant-ui/elements/reasoning.aui.tsx)
 - [tool-group.aui.tsx](file://freshroute/src/components/assistant-ui/elements/tool-group.aui.tsx)
+- [tool-fallback.aui.tsx](file://freshroute/src/components/assistant-ui/elements/tool-fallback.aui.tsx)
 - [attachment.aui.tsx](file://freshroute/src/components/assistant-ui/elements/attachment.aui.tsx)
+- [follow-up-suggestions.aui.tsx](file://freshroute/src/components/assistant-ui/elements/follow-up-suggestions.aui.tsx)
 - [assistant-adapter.ts](file://freshroute/src/lib/assistant-adapter.ts)
 - [gemini.ts](file://freshroute/src/lib/gemini.ts)
+- [adkAgent.ts](file://freshroute/src/lib/orchestrator/adkAgent.ts)
+- [tools.ts](file://freshroute/src/lib/orchestrator/tools.ts)
 - [ChatPage.tsx](file://freshroute/src/pages/ChatPage.tsx)
 - [ChatBody.tsx](file://freshroute/src/components/ChatBody.tsx)
 - [ChatInput.tsx](file://freshroute/src/components/ChatInput.tsx)
 </cite>
+
+## Update Summary
+**Changes Made**
+- Enhanced assistant integration with comprehensive AI elements system including advanced tool fallback mechanisms
+- Improved assistant adapter connecting frontend components to Google ADK via orchestrator/adkAgent.ts
+- Expanded element capabilities including thread management, markdown rendering, tool fallbacks, and reasoning visualization
+- Added sophisticated approval workflows for write operations and enhanced user interaction patterns
+- Integrated follow-up suggestions system for improved conversational flow
 
 ## Table of Contents
 1. Introduction
@@ -27,10 +39,10 @@
 9. Conclusion
 
 ## Introduction
-This document explains the Assistant UI components that power the conversational experience in FreshRoute. It covers how the assistant runtime is provided, how messages are rendered and composed, how attachments and reasoning blocks are handled, and how the UI integrates with the Gemini proxy via a chat adapter. The goal is to make the system understandable for both developers and non-technical readers.
+This document explains the enhanced Assistant UI components that power the conversational experience in FreshRoute. The system now features a comprehensive AI elements framework with sophisticated tool handling, approval workflows, and seamless integration with Google ADK through the orchestrator layer. It covers how the assistant runtime is provided, how messages are rendered and composed, how attachments and reasoning blocks are handled, and how the UI integrates with the Gemini proxy via an improved chat adapter. The goal is to make the system understandable for both developers and non-technical readers.
 
 ## Project Structure
-The assistant UI is organized around a provider that sets up the runtime, a thread component that renders conversations, and specialized elements for text, reasoning, tool calls, and attachments. Input handling lives in dedicated input components, while the chat page orchestrates state persistence and lifecycle hooks.
+The enhanced assistant UI is organized around a provider that sets up the runtime, a sophisticated thread component that renders conversations with advanced state management, and specialized elements for text, reasoning, tool calls, attachments, and follow-up suggestions. Input handling lives in dedicated input components, while the chat page orchestrates state persistence and lifecycle hooks with improved error handling.
 
 ```mermaid
 graph TB
@@ -39,17 +51,21 @@ ChatPage["ChatPage.tsx"]
 ChatBody["ChatBody.tsx"]
 ChatInput["ChatInput.tsx"]
 end
-subgraph "Assistant Runtime"
+subgraph "Enhanced Assistant Runtime"
 Provider["AssistantProvider.tsx"]
 Adapter["assistant-adapter.ts"]
 Gemini["gemini.ts"]
+ADK["adkAgent.ts"]
+Tools["tools.ts"]
 end
-subgraph "Thread & Elements"
+subgraph "Advanced Thread & Elements"
 Thread["thread.aui.tsx"]
 Markdown["markdown-text.tsx"]
 Reasoning["reasoning.aui.tsx"]
 ToolGroup["tool-group.aui.tsx"]
+ToolFallback["tool-fallback.aui.tsx"]
 Attachment["attachment.aui.tsx"]
+Suggestions["follow-up-suggestions.aui.tsx"]
 end
 ChatPage --> Provider
 ChatPage --> ChatBody
@@ -58,9 +74,13 @@ Provider --> Thread
 Thread --> Markdown
 Thread --> Reasoning
 Thread --> ToolGroup
+Thread --> ToolFallback
 Thread --> Attachment
+Thread --> Suggestions
 Thread --> Adapter
 Adapter --> Gemini
+Gemini --> ADK
+ADK --> Tools
 ```
 
 **Diagram sources**
@@ -69,23 +89,27 @@ Adapter --> Gemini
 - [thread.aui.tsx:133-207](file://freshroute/src/components/assistant-ui/elements/thread.aui.tsx#L133-L207)
 - [assistant-adapter.ts:42-66](file://freshroute/src/lib/assistant-adapter.ts#L42-L66)
 - [gemini.ts:233-246](file://freshroute/src/lib/gemini.ts#L233-L246)
+- [adkAgent.ts:186-192](file://freshroute/src/lib/orchestrator/adkAgent.ts#L186-L192)
 
 **Section sources**
 - [ChatPage.tsx:15-88](file://freshroute/src/pages/ChatPage.tsx#L15-L88)
 - [AssistantProvider.tsx:10-18](file://freshroute/src/components/assistant-ui/AssistantProvider.tsx#L10-L18)
 
 ## Core Components
-- AssistantProvider: Wraps the application with the assistant runtime using a local runtime backed by a chat adapter.
-- Thread: Renders the conversation viewport, composer, suggestions, message groups, and action bars.
-- MarkdownText: Renders rich markdown content with code blocks and copy-to-clipboard support.
-- Reasoning: Collapsible reasoning blocks with streaming-aware animations and scroll locking.
-- ToolGroup: Collapsible grouping for tool calls with animated transitions and accessibility.
-- Attachment: Handles file/image attachments in composer and messages, including previews and error states.
-- AssistantAdapter: Converts assistant-ui messages into the format expected by the Gemini proxy and returns responses.
-- Gemini Client: Calls the Supabase Edge Function proxy with circuit breaker and fallbacks; includes sanitization and fallback logic.
-- ChatPage: Orchestrates initialization, visibility-based refresh, and debounced persistence of chat state.
-- ChatBody: Renders messages from app state with typing indicators and auto-scroll.
-- ChatInput: Provides text input, voice recording with Web Speech API, and attachment triggers.
+- **AssistantProvider**: Wraps the application with the enhanced assistant runtime using a local runtime backed by an improved chat adapter with ADK integration.
+- **Thread**: Renders the conversation viewport with advanced state management, composer, suggestions, message groups, action bars, and follow-up suggestions.
+- **MarkdownText**: Renders rich markdown content with GFM support, styled headings, lists, tables, code blocks with copy-to-clipboard support, and deferred rendering for performance.
+- **Reasoning**: Collapsible reasoning blocks with streaming-aware animations, scroll locking, and sophisticated state management for real-time updates.
+- **ToolGroup**: Collapsible grouping for tool calls with animated transitions, accessibility features, and enhanced user feedback.
+- **ToolFallback**: Comprehensive tool execution interface with approval workflows, status tracking, duration display, error handling, and result presentation.
+- **Attachment**: Handles file/image attachments in composer and messages, including previews, progress indicators, and error states.
+- **FollowUpSuggestions**: Dynamic suggestion system with horizontal scrolling, fade effects, and contextual prompts based on conversation context.
+- **AssistantAdapter**: Converts assistant-ui messages into the format expected by the Gemini proxy with enhanced error handling and ADK integration.
+- **Gemini Client**: Calls the Supabase Edge Function proxy with circuit breaker, fallbacks, sanitization, and comprehensive logging; includes ADK agent support.
+- **ADK Agent**: Centralized agent configuration with tool schemas, instruction definitions, and domain boundaries for the FreshRoute AI assistant.
+- **ChatPage**: Orchestrates initialization, visibility-based refresh, debounced persistence of chat state with enhanced error handling.
+- **ChatBody**: Renders messages from app state with typing indicators, auto-scroll, and improved message type handling.
+- **ChatInput**: Provides text input, voice recording with Web Speech API, attachment triggers, and enhanced user feedback.
 
 **Section sources**
 - [AssistantProvider.tsx:10-18](file://freshroute/src/components/assistant-ui/AssistantProvider.tsx#L10-L18)
@@ -93,15 +117,18 @@ Adapter --> Gemini
 - [markdown-text.tsx:40-60](file://freshroute/src/components/assistant-ui/elements/markdown-text.tsx#L40-L60)
 - [reasoning.aui.tsx:24-57](file://freshroute/src/components/assistant-ui/elements/reasoning.aui.tsx#L24-L57)
 - [tool-group.aui.tsx:44-93](file://freshroute/src/components/assistant-ui/elements/tool-group.aui.tsx#L44-L93)
+- [tool-fallback.aui.tsx:547-595](file://freshroute/src/components/assistant-ui/elements/tool-fallback.aui.tsx#L547-L595)
 - [attachment.aui.tsx:108-209](file://freshroute/src/components/assistant-ui/elements/attachment.aui.tsx#L108-L209)
+- [follow-up-suggestions.aui.tsx:73-84](file://freshroute/src/components/assistant-ui/elements/follow-up-suggestions.aui.tsx#L73-L84)
 - [assistant-adapter.ts:42-66](file://freshroute/src/lib/assistant-adapter.ts#L42-L66)
 - [gemini.ts:50-98](file://freshroute/src/lib/gemini.ts#L50-L98)
+- [adkAgent.ts:186-192](file://freshroute/src/lib/orchestrator/adkAgent.ts#L186-L192)
 - [ChatPage.tsx:15-88](file://freshroute/src/pages/ChatPage.tsx#L15-L88)
 - [ChatBody.tsx:32-84](file://freshroute/src/components/ChatBody.tsx#L32-L84)
 - [ChatInput.tsx:18-199](file://freshroute/src/components/ChatInput.tsx#L18-L199)
 
 ## Architecture Overview
-The assistant UI uses a provider-driven architecture where the runtime supplies state and primitives for composing messages. The thread component composes user and assistant messages, handles attachments, reasoning blocks, and tool call groups. A chat adapter bridges assistant-ui’s message model to the Gemini proxy via a Supabase Edge Function, with robust fallbacks and circuit breaking.
+The enhanced assistant UI uses a provider-driven architecture where the runtime supplies state and primitives for composing messages. The thread component composes user and assistant messages, handles attachments, reasoning blocks, tool call groups, and follow-up suggestions. A sophisticated chat adapter bridges assistant-ui's message model to the Gemini proxy via a Supabase Edge Function, with robust fallbacks, circuit breaking, and ADK agent integration.
 
 ```mermaid
 sequenceDiagram
@@ -109,34 +136,38 @@ participant User as "User"
 participant Thread as "Thread (thread.aui.tsx)"
 participant Adapter as "assistant-adapter.ts"
 participant Gemini as "gemini.ts"
+participant ADK as "adkAgent.ts"
 participant Proxy as "Supabase gemini-proxy"
 User->>Thread : Type/send message
 Thread->>Adapter : run({ messages, abortSignal })
 Adapter->>Gemini : agentChat(history, ctx)
-Gemini->>Proxy : invoke("chat", body)
-Proxy-->>Gemini : { ok, text }
+Gemini->>ADK : agentTurn(sessionId, message)
+ADK->>Proxy : invoke("agent-turn", body)
+Proxy-->>ADK : { ok, text, toolCalls }
+ADK-->>Gemini : Agent turn result
 Gemini-->>Adapter : reply string
 Adapter-->>Thread : { content : [{ type : "text", text }] }
-Thread-->>User : Render assistant response
+Thread-->>User : Render assistant response with suggestions
 ```
 
 **Diagram sources**
 - [thread.aui.tsx:254-291](file://freshroute/src/components/assistant-ui/elements/thread.aui.tsx#L254-L291)
 - [assistant-adapter.ts:42-66](file://freshroute/src/lib/assistant-adapter.ts#L42-L66)
-- [gemini.ts:233-246](file://freshroute/src/lib/gemini.ts#L233-L246)
+- [gemini.ts:297-319](file://freshroute/src/lib/gemini.ts#L297-L319)
+- [adkAgent.ts:186-192](file://freshroute/src/lib/orchestrator/adkAgent.ts#L186-L192)
 
 ## Detailed Component Analysis
 
 ### AssistantProvider
-- Purpose: Initializes the assistant runtime with a local runtime bound to the Gemini chat adapter.
+- Purpose: Initializes the enhanced assistant runtime with a local runtime bound to the improved Gemini chat adapter with ADK integration.
 - Behavior: Creates a runtime using useLocalRuntime and wraps children with AssistantRuntimeProvider.
-- Integration: Depends on assistant-adapter for message flow and rendering.
+- Integration: Depends on assistant-adapter for message flow, rendering, and ADK agent communication.
 
 ```mermaid
 flowchart TD
-Start(["Render AssistantProvider"]) --> CreateRuntime["Create local runtime<br/>with geminiChatAdapter"]
+Start(["Render AssistantProvider"]) --> CreateRuntime["Create local runtime<br/>with enhanced geminiChatAdapter"]
 CreateRuntime --> WrapChildren["Wrap children in AssistantRuntimeProvider"]
-WrapChildren --> End(["Subtree receives runtime context"])
+WrapChildren --> End(["Subtree receives enhanced runtime context"])
 ```
 
 **Diagram sources**
@@ -146,13 +177,15 @@ WrapChildren --> End(["Subtree receives runtime context"])
 - [AssistantProvider.tsx:10-18](file://freshroute/src/components/assistant-ui/AssistantProvider.tsx#L10-L18)
 
 ### Thread
-- Purpose: Main conversation container; manages viewport, composer, suggestions, and message rendering.
+- Purpose: Main conversation container with enhanced state management; manages viewport, composer, suggestions, and message rendering.
 - Key features:
   - Welcome view when empty; skeleton when loading history.
-  - Grouped parts for reasoning, tool calls, and text.
+  - Grouped parts for reasoning, tool calls, and text with sophisticated categorization.
   - Composer with dictation, send/cancel actions, and attachments.
   - Action bars for copy, reload, export, edit, and branch navigation.
-- Extensibility: Supports custom AssistantMessage, ToolGroup, and ReasoningGroup overrides via context.
+  - Follow-up suggestions with horizontal scrolling and fade effects.
+  - Advanced message grouping and status tracking.
+- Extensibility: Supports custom AssistantMessage, ToolGroup, ReasoningGroup, and ToolFallback overrides via context.
 
 ```mermaid
 classDiagram
@@ -163,6 +196,7 @@ class Thread {
 +ViewportFooter()
 +Composer()
 +Suggestions()
++FollowupSuggestions()
 }
 class MessagePrimitive {
 +Root()
@@ -182,6 +216,7 @@ class ComposerPrimitive {
 }
 Thread --> MessagePrimitive : "renders messages"
 Thread --> ComposerPrimitive : "handles input"
+Thread --> FollowupSuggestions : "contextual prompts"
 ```
 
 **Diagram sources**
@@ -197,9 +232,10 @@ Thread --> ComposerPrimitive : "handles input"
 ### MarkdownText
 - Purpose: Renders markdown content with GFM support, styled headings, lists, tables, and code blocks.
 - Features:
-  - Memoized components for performance.
-  - Code block headers with copy-to-clipboard feedback.
-  - Deferred rendering for large content.
+  - Memoized components for performance optimization.
+  - Code block headers with copy-to-clipboard feedback and language detection.
+  - Deferred rendering for large content to improve initial paint performance.
+  - Custom styling for all markdown elements with consistent theming.
 
 ```mermaid
 flowchart TD
@@ -222,9 +258,10 @@ Clipboard --> Output
 ### Reasoning
 - Purpose: Presents collapsible reasoning sections with streaming-aware behavior and scroll locking during animations.
 - Features:
-  - Root wrapper locks scroll during open/close transitions.
-  - Trigger shows active state when streaming.
-  - Content renders reasoning text via MarkdownText.
+  - Root wrapper locks scroll during open/close transitions to prevent layout shifts.
+  - Trigger shows active state when streaming with visual feedback.
+  - Content renders reasoning text via MarkdownText with proper formatting.
+  - Sophisticated state management for real-time streaming updates.
 
 ```mermaid
 sequenceDiagram
@@ -248,66 +285,70 @@ Content->>Reasoning : Render MarkdownText
 - [reasoning.aui.tsx:24-57](file://freshroute/src/components/assistant-ui/elements/reasoning.aui.tsx#L24-L57)
 - [reasoning.aui.tsx:61-82](file://freshroute/src/components/assistant-ui/elements/reasoning.aui.tsx#L61-L82)
 
-### ToolGroup
-- Purpose: Groups multiple tool calls into a collapsible section with animated transitions and accessibility.
+### ToolFallback
+- Purpose: Comprehensive tool execution interface with approval workflows, status tracking, and result presentation.
 - Features:
-  - Controlled or uncontrolled open state.
-  - Animated chevron and loader indicator when active.
-  - Staggered child animations for smooth reveal.
+  - Collapsible interface with smooth animations and scroll locking.
+  - Real-time status indicators for running, complete, incomplete, and requires-action states.
+  - Duration tracking with formatted time display.
+  - Approval workflow with customizable options and confirmation dialogs.
+  - Error handling with detailed error messages and cancellation support.
+  - Result presentation with JSON formatting and argument display.
 
 ```mermaid
 flowchart TD
 Open["Open/Close"] --> Lock["Lock scroll during animation"]
-Lock --> Toggle["Toggle collapsible state"]
-Toggle --> Children["Animate children with stagger"]
-Children --> UI["Display tool results"]
+Lock --> Status["Track tool execution status"]
+Status --> Approval{"Requires approval?"}
+Approval --> |Yes| Workflow["Show approval workflow"]
+Approval --> |No| Execute["Execute tool"]
+Workflow --> Decision["User decision"]
+Decision --> Execute
+Execute --> Result["Display results"]
+Result --> Close["Close with animation"]
 ```
 
 **Diagram sources**
-- [tool-group.aui.tsx:44-93](file://freshroute/src/components/assistant-ui/elements/tool-group.aui.tsx#L44-L93)
-- [tool-group.aui.tsx:95-148](file://freshroute/src/components/assistant-ui/elements/tool-group.aui.tsx#L95-L148)
-- [tool-group.aui.tsx:150-187](file://freshroute/src/components/assistant-ui/elements/tool-group.aui.tsx#L150-L187)
+- [tool-fallback.aui.tsx:547-595](file://freshroute/src/components/assistant-ui/elements/tool-fallback.aui.tsx#L547-L595)
+- [tool-fallback.aui.tsx:337-445](file://freshroute/src/components/assistant-ui/elements/tool-fallback.aui.tsx#L337-L445)
 
 **Section sources**
-- [tool-group.aui.tsx:44-93](file://freshroute/src/components/assistant-ui/elements/tool-group.aui.tsx#L44-L93)
-- [tool-group.aui.tsx:95-148](file://freshroute/src/components/assistant-ui/elements/tool-group.aui.tsx#L95-L148)
-- [tool-group.aui.tsx:150-187](file://freshroute/src/components/assistant-ui/elements/tool-group.aui.tsx#L150-L187)
+- [tool-fallback.aui.tsx:547-595](file://freshroute/src/components/assistant-ui/elements/tool-fallback.aui.tsx#L547-L595)
+- [tool-fallback.aui.tsx:337-445](file://freshroute/src/components/assistant-ui/elements/tool-fallback.aui.tsx#L337-L445)
 
-### Attachment
-- Purpose: Manages file and image attachments in both composer and messages.
+### FollowUpSuggestions
+- Purpose: Dynamic suggestion system with horizontal scrolling and contextual prompts based on conversation context.
 - Features:
-  - Preview dialog for images with lazy load.
-  - Avatar thumbnails with fallback icons.
-  - Upload progress and error overlays.
-  - Remove action for composer attachments.
+  - Horizontal scrolling with fade effects at edges for better UX.
+  - RTL (Right-to-Left) language support with proper direction handling.
+  - Contextual suggestions based on conversation state and user interactions.
+  - Auto-send functionality for seamless user experience.
+  - Responsive design with proper spacing and touch-friendly targets.
 
 ```mermaid
-sequenceDiagram
-participant Composer as "Composer"
-participant Attachment as "AttachmentUI"
-participant Dialog as "PreviewDialog"
-participant Thumb as "AvatarThumbnail"
-Composer->>Attachment : Add attachment
-Attachment->>Thumb : Render thumbnail
-Attachment->>Dialog : Open preview on click
-Dialog-->>Attachment : Close preview
-Attachment-->>Composer : Remove if needed
+flowchart TD
+Suggestion["Contextual Suggestion"] --> Display["Display with fade effects"]
+Display --> Scroll["Handle horizontal scrolling"]
+Scroll --> Interaction["User interaction"]
+Interaction --> Send["Auto-send or manual send"]
+Send --> Response["Process response"]
 ```
 
 **Diagram sources**
-- [attachment.aui.tsx:108-209](file://freshroute/src/components/assistant-ui/elements/attachment.aui.tsx#L108-L209)
-- [attachment.aui.tsx:227-265](file://freshroute/src/components/assistant-ui/elements/attachment.aui.tsx#L227-L265)
+- [follow-up-suggestions.aui.tsx:73-84](file://freshroute/src/components/assistant-ui/elements/follow-up-suggestions.aui.tsx#L73-L84)
+- [follow-up-suggestions.aui.tsx:6-71](file://freshroute/src/components/assistant-ui/elements/follow-up-suggestions.aui.tsx#L6-L71)
 
 **Section sources**
-- [attachment.aui.tsx:108-209](file://freshroute/src/components/assistant-ui/elements/attachment.aui.tsx#L108-L209)
-- [attachment.aui.tsx:227-265](file://freshroute/src/components/assistant-ui/elements/attachment.aui.tsx#L227-L265)
+- [follow-up-suggestions.aui.tsx:73-84](file://freshroute/src/components/assistant-ui/elements/follow-up-suggestions.aui.tsx#L73-L84)
+- [follow-up-suggestions.aui.tsx:6-71](file://freshroute/src/components/assistant-ui/elements/follow-up-suggestions.aui.tsx#L6-L71)
 
 ### AssistantAdapter
-- Purpose: Bridges assistant-ui messages to the Gemini proxy chat endpoint.
+- Purpose: Bridges assistant-ui messages to the Gemini proxy chat endpoint with enhanced error handling and ADK integration.
 - Behavior:
-  - Converts ThreadMessage[] to proxy history shape.
-  - Builds minimal ChatContext.
-  - Returns text content or error fallback.
+  - Converts ThreadMessage[] to proxy history shape with improved filtering.
+  - Builds minimal ChatContext with placeholder data for future enrichment.
+  - Returns text content or error fallback with user-friendly messaging.
+  - Handles abort signals properly for cancellation scenarios.
 
 ```mermaid
 flowchart TD
@@ -329,12 +370,13 @@ AgentChat --> Error["Fallback text on failure"]
 - [assistant-adapter.ts:42-66](file://freshroute/src/lib/assistant-adapter.ts#L42-L66)
 
 ### Gemini Client
-- Purpose: Encapsulates all AI interactions through the Supabase Edge Function proxy with circuit breaker and fallbacks.
+- Purpose: Encapsulates all AI interactions through the Supabase Edge Function proxy with circuit breaker, fallbacks, and ADK agent support.
 - Features:
-  - Sanitizes user inputs to prevent prompt injection.
-  - Logs usage metrics to Firestore.
-  - Provides deterministic fallbacks for extraction, vision, and chat.
-  - Exposes status checking and mode detection.
+  - Sanitizes user inputs to prevent prompt injection attacks.
+  - Logs usage metrics to Firestore for analytics and monitoring.
+  - Provides deterministic fallbacks for extraction, vision, and chat operations.
+  - Exposes status checking and mode detection for UI state management.
+  - ADK agent integration with session management and tool execution.
 
 ```mermaid
 flowchart TD
@@ -346,25 +388,55 @@ CircuitBreaker --> |No| Invoke["Invoke gemini-proxy"]
 Invoke --> Log["Log usage to Firestore"]
 Log --> Parse["Parse response"]
 Parse --> Result["Return result or fallback"]
+Parse --> ADK["ADK Agent Integration"]
 ```
 
 **Diagram sources**
 - [gemini.ts:35-48](file://freshroute/src/lib/gemini.ts#L35-L48)
 - [gemini.ts:50-98](file://freshroute/src/lib/gemini.ts#L50-L98)
-- [gemini.ts:233-246](file://freshroute/src/lib/gemini.ts#L233-L246)
+- [gemini.ts:297-319](file://freshroute/src/lib/gemini.ts#L297-L319)
 
 **Section sources**
 - [gemini.ts:35-48](file://freshroute/src/lib/gemini.ts#L35-L48)
 - [gemini.ts:50-98](file://freshroute/src/lib/gemini.ts#L50-L98)
-- [gemini.ts:233-246](file://freshroute/src/lib/gemini.ts#L233-L246)
+- [gemini.ts:297-319](file://freshroute/src/lib/gemini.ts#L297-L319)
+
+### ADK Agent
+- Purpose: Centralized agent configuration and tool definitions for the FreshRoute AI assistant.
+- Features:
+  - Comprehensive tool schemas with parameter validation and descriptions.
+  - Domain boundary enforcement for focused assistance.
+  - Multi-language support with Urdu and English defaults.
+  - Write action approval requirements for safety and user control.
+  - Agent configuration with model selection and instruction templates.
+
+```mermaid
+flowchart TD
+Config["AGENT_CONFIG"] --> Tools["TOOL_SCHEMAS"]
+Config --> Instruction["AGENT_INSTRUCTION"]
+Tools --> ReadTools["Read-only tools"]
+Tools --> WriteTools["Write tools (approval required)"]
+Instruction --> Domains["Domain boundaries"]
+Instruction --> Language["Language preferences"]
+```
+
+**Diagram sources**
+- [adkAgent.ts:186-192](file://freshroute/src/lib/orchestrator/adkAgent.ts#L186-L192)
+- [adkAgent.ts:47-178](file://freshroute/src/lib/orchestrator/adkAgent.ts#L47-L178)
+- [adkAgent.ts:12-35](file://freshroute/src/lib/orchestrator/adkAgent.ts#L12-L35)
+
+**Section sources**
+- [adkAgent.ts:186-192](file://freshroute/src/lib/orchestrator/adkAgent.ts#L186-L192)
+- [adkAgent.ts:47-178](file://freshroute/src/lib/orchestrator/adkAgent.ts#L47-L178)
+- [adkAgent.ts:12-35](file://freshroute/src/lib/orchestrator/adkAgent.ts#L12-L35)
 
 ### ChatPage
 - Purpose: Entry point for the chat interface; initializes app state, refreshes AI mode on visibility changes, and persists chat state.
 - Behavior:
-  - Boots director and refreshes AI mode on mount.
-  - Subscribes to visibility changes to refresh AI mode.
-  - Loads saved chat state for logged-in users.
-  - Debounces saving stage, lot, scenarios, and quick replies.
+  - Boots director and refreshes AI mode on mount with enhanced error handling.
+  - Subscribes to visibility changes to refresh AI mode automatically.
+  - Loads saved chat state for logged-in users with fallback handling.
+  - Debounces saving stage, lot, scenarios, and quick replies for performance.
 
 ```mermaid
 sequenceDiagram
@@ -388,9 +460,9 @@ Note over Page,DB : On stage change, debounce saveChatState
 ### ChatBody
 - Purpose: Renders messages from app state with typing indicators and auto-scroll.
 - Behavior:
-  - Maps message kinds to specific card or bubble components.
-  - Shows typing bubble when assistant is processing.
-  - Scrolls to bottom on new messages or typing updates.
+  - Maps message kinds to specific card or bubble components with enhanced type handling.
+  - Shows typing bubble when assistant is processing with visual feedback.
+  - Scrolls to bottom on new messages or typing updates with smooth animations.
 
 ```mermaid
 flowchart TD
@@ -412,10 +484,10 @@ Scroll["endRef"] --> AutoScroll["scrollIntoView"]
 ### ChatInput
 - Purpose: Provides text input, voice recording with Web Speech API, and attachment triggers.
 - Behavior:
-  - Sends text via onUserText.
-  - Starts/stops speech recognition with language selection.
-  - Displays real-time transcript and errors.
-  - Opens photo sheet for attachments.
+  - Sends text via onUserText with validation and sanitization.
+  - Starts/stops speech recognition with language selection and error handling.
+  - Displays real-time transcript and localized error messages.
+  - Opens photo sheet for attachments with preview capabilities.
 
 ```mermaid
 sequenceDiagram
@@ -441,7 +513,7 @@ Input->>Input : Populate input with final transcript
 - [ChatInput.tsx:18-199](file://freshroute/src/components/ChatInput.tsx#L18-L199)
 
 ## Dependency Analysis
-The assistant UI has clear separation between presentation (thread and elements), runtime (provider), and integration (adapter and gemini client). Coupling is minimized through well-defined interfaces and context providers.
+The enhanced assistant UI has clear separation between presentation (thread and elements), runtime (provider), and integration (adapter, gemini client, and ADK agent). Coupling is minimized through well-defined interfaces, context providers, and modular architecture.
 
 ```mermaid
 graph LR
@@ -449,9 +521,13 @@ Provider["AssistantProvider.tsx"] --> Thread["thread.aui.tsx"]
 Thread --> Markdown["markdown-text.tsx"]
 Thread --> Reasoning["reasoning.aui.tsx"]
 Thread --> ToolGroup["tool-group.aui.tsx"]
+Thread --> ToolFallback["tool-fallback.aui.tsx"]
 Thread --> Attachment["attachment.aui.tsx"]
+Thread --> Suggestions["follow-up-suggestions.aui.tsx"]
 Thread --> Adapter["assistant-adapter.ts"]
 Adapter --> Gemini["gemini.ts"]
+Gemini --> ADK["adkAgent.ts"]
+ADK --> Tools["tools.ts"]
 ChatPage["ChatPage.tsx"] --> Provider
 ChatPage --> ChatBody["ChatBody.tsx"]
 ChatPage --> ChatInput["ChatInput.tsx"]
@@ -461,32 +537,36 @@ ChatPage --> ChatInput["ChatInput.tsx"]
 - [AssistantProvider.tsx:10-18](file://freshroute/src/components/assistant-ui/AssistantProvider.tsx#L10-L18)
 - [thread.aui.tsx:133-207](file://freshroute/src/components/assistant-ui/elements/thread.aui.tsx#L133-L207)
 - [assistant-adapter.ts:42-66](file://freshroute/src/lib/assistant-adapter.ts#L42-L66)
-- [gemini.ts:233-246](file://freshroute/src/lib/gemini.ts#L233-L246)
+- [gemini.ts:297-319](file://freshroute/src/lib/gemini.ts#L297-L319)
+- [adkAgent.ts:186-192](file://freshroute/src/lib/orchestrator/adkAgent.ts#L186-L192)
 - [ChatPage.tsx:15-88](file://freshroute/src/pages/ChatPage.tsx#L15-L88)
 
 **Section sources**
 - [AssistantProvider.tsx:10-18](file://freshroute/src/components/assistant-ui/AssistantProvider.tsx#L10-L18)
 - [thread.aui.tsx:133-207](file://freshroute/src/components/assistant-ui/elements/thread.aui.tsx#L133-L207)
 - [assistant-adapter.ts:42-66](file://freshroute/src/lib/assistant-adapter.ts#L42-L66)
-- [gemini.ts:233-246](file://freshroute/src/lib/gemini.ts#L233-L246)
+- [gemini.ts:297-319](file://freshroute/src/lib/gemini.ts#L297-L319)
+- [adkAgent.ts:186-192](file://freshroute/src/lib/orchestrator/adkAgent.ts#L186-L192)
 - [ChatPage.tsx:15-88](file://freshroute/src/pages/ChatPage.tsx#L15-L88)
 
 ## Performance Considerations
-- Use memoization for markdown components to avoid unnecessary re-renders.
-- Defer markdown rendering for large content to improve initial paint.
-- Employ scroll locking during collapsible animations to prevent layout shifts.
-- Debounce state persistence to reduce write frequency.
+- Use memoization for markdown components to avoid unnecessary re-renders and optimize rendering performance.
+- Defer markdown rendering for large content to improve initial paint and reduce memory usage.
+- Employ scroll locking during collapsible animations to prevent layout shifts and maintain smooth user experience.
+- Debounce state persistence to reduce write frequency and improve database performance.
 - Leverage circuit breaker to protect against cascading failures and provide fast fallbacks.
-- Optimize attachment previews with lazy loading and conditional rendering.
-
-[No sources needed since this section provides general guidance]
+- Optimize attachment previews with lazy loading and conditional rendering for better memory management.
+- Implement efficient state management for follow-up suggestions to minimize re-renders.
+- Use proper cleanup and disposal of event listeners and observers to prevent memory leaks.
 
 ## Troubleshooting Guide
-- Network or proxy errors: The adapter returns a friendly fallback message when the Gemini proxy is unreachable. Check the gemini client’s circuit breaker and fallback paths.
-- Speech recognition issues: ChatInput displays localized error messages for microphone permissions, no-speech, and service availability. Ensure browser support and permissions.
-- Markdown rendering problems: Verify remark-gfm plugins and component overrides; check console for parsing errors.
-- Collapsible animations: If scroll jumps occur, ensure scroll locking is applied to root refs during open/close transitions.
-- State persistence: Confirm user session exists before saving/loading chat state; handle errors gracefully.
+- Network or proxy errors: The adapter returns a friendly fallback message when the Gemini proxy is unreachable. Check the gemini client's circuit breaker and fallback paths for ADK integration issues.
+- Speech recognition issues: ChatInput displays localized error messages for microphone permissions, no-speech, and service availability. Ensure browser support and permissions are properly configured.
+- Markdown rendering problems: Verify remark-gfm plugins and component overrides; check console for parsing errors and ensure proper styling is applied.
+- Collapsible animations: If scroll jumps occur, ensure scroll locking is applied to root refs during open/close transitions for all collapsible components.
+- State persistence: Confirm user session exists before saving/loading chat state; handle errors gracefully with proper fallbacks.
+- Tool execution failures: ToolFallback provides comprehensive error handling with user-friendly messages and retry options. Check approval workflows and permission settings.
+- ADK agent issues: Monitor agent configuration and tool schemas; verify domain boundaries and language settings are properly configured.
 
 **Section sources**
 - [assistant-adapter.ts:52-64](file://freshroute/src/lib/assistant-adapter.ts#L52-L64)
@@ -494,9 +574,8 @@ ChatPage --> ChatInput["ChatInput.tsx"]
 - [ChatInput.tsx:75-105](file://freshroute/src/components/ChatInput.tsx#L75-L105)
 - [markdown-text.tsx:40-60](file://freshroute/src/components/assistant-ui/elements/markdown-text.tsx#L40-L60)
 - [reasoning.aui.tsx:24-57](file://freshroute/src/components/assistant-ui/elements/reasoning.aui.tsx#L24-L57)
+- [tool-fallback.aui.tsx:267-302](file://freshroute/src/components/assistant-ui/elements/tool-fallback.aui.tsx#L267-L302)
 - [ChatPage.tsx:34-69](file://freshroute/src/pages/ChatPage.tsx#L34-L69)
 
 ## Conclusion
-The Assistant UI components in FreshRoute provide a robust, extensible, and user-friendly conversational interface. The provider-driven runtime, modular elements for text, reasoning, tools, and attachments, and a resilient adapter layer ensure reliable communication with the Gemini proxy. With thoughtful performance optimizations and comprehensive error handling, the system delivers a smooth experience across devices and network conditions.
-
-[No sources needed since this section summarizes without analyzing specific files]
+The enhanced Assistant UI components in FreshRoute provide a robust, extensible, and user-friendly conversational interface with comprehensive AI capabilities. The provider-driven runtime, modular elements for text, reasoning, tools, attachments, and follow-up suggestions, and a resilient adapter layer with ADK integration ensure reliable communication with the Gemini proxy. With thoughtful performance optimizations, sophisticated error handling, and advanced user interaction patterns, the system delivers a smooth experience across devices and network conditions while maintaining high standards for security and user control.
