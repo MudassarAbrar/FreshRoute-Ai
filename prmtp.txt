@@ -1,0 +1,16 @@
+epxlain me the workflow of the app where is the user request goes how the model/system of the app works and then how system handle it how our system gets the values how it selects the vendors for the order pickup or the venderos do there offer there are so many uncheck box int he appp that arent connecting explain all these to me
+how does this wokrs inwhich files the code is for this 
+
+
+how does this works in which is code for this
+what is the logic for this Spoilage Risk Engine	Estimate likely loss from waiting, heat, handling, transport, and storage
+
+
+how does this systme works ecommendation Engine	Compare sale, storage, transport, and buyer options
+how does this buyer make there profile we havent added any system that says we want o be a seller or a buyer and for the seller we have mad eth app but for th buyer we havent made any appp feature hw woul the opsoite side would work Buyer Marketplace	Match lots with qualified buyers
+
+hwo wuld the transport and sotrage provider system would work how would it select it what si the critera and how we havent made any prfile for the trnaspoter or sorage providers 
+
+hpw does the agentic worklfow works that the main point fo the ai hackthone the agentic part how dos it handles it Workflow Orchestrator	Execute approved messages, bookings, reminders, and monitoring jobs
+
+how does order tracking works Order Tracking	Track lot status from availability through payment and deliveryhav we impelented all the fallback , error handling have we impelnted all the rate limiting issue girdarils and not out of domain questions can be asked from the ai agent and main cyber secruity priclep contrint 

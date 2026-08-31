@@ -1,6 +1,7 @@
 import { CROP_ALIASES } from "@/data/market"
 import { supabase } from "@/lib/supabase"
 import { logAiUsageToFirestore } from "@/lib/firestore"
+import { withCircuitBreaker } from "@/lib/circuitBreaker"
 import type { Grade, VisionResult } from "@/types"
 import type { Lang } from "@/i18n"
 
@@ -27,27 +28,73 @@ export function consumeAiError(): string | null {
 
 type ProxyData = { ok?: boolean; error?: string; [k: string]: unknown }
 
+/**
+ * Sanitize user-generated text before passing to LLM (Task 10 guardrail).
+ * Strips instruction-like patterns from listing descriptions and chat messages.
+ */
+export function sanitizeForLLM(text: string): string {
+  if (!text) return text
+  // Strip prompt injection patterns
+  const sanitized = text
+    .replace(/ignore\s+(previous|all|above)\s+(instructions|prompts|rules)/gi, "")
+    .replace(/you\s+are\s+now\s+/gi, "")
+    .replace(/system\s*:/gi, "")
+    .replace(/<\/?script>/gi, "")
+    .replace(/<\/?style>/gi, "")
+    .replace(/javascript:/gi, "")
+    .replace(/<\/?iframe/gi, "")
+    .trim()
+  return sanitized || "[sanitized]"
+}
+
 async function callProxy(body: Record<string, unknown>): Promise<ProxyData> {
-  const started = Date.now()
-  const { data, error } = await supabase.functions.invoke("gemini-proxy", { body })
-  const latencyMs = Date.now() - started
-
-  // Log to Firestore (non-blocking, fire-and-forget)
   const action = String(body.action ?? "unknown")
-  const proxyData = (data ?? { ok: false, error: "Empty response from AI proxy" }) as ProxyData
-  const status: "ok" | "error" = error || !proxyData.ok ? "error" : "ok"
-  void logAiUsageToFirestore({
-    action,
-    model: (proxyData.model as string) ?? "gemini-flash-latest",
-    status,
-    error: status === "error" ? (error?.message ?? proxyData.error ?? "unknown") : undefined,
-    latencyMs,
-  })
 
-  if (error) {
-    return { ok: false, error: `Could not reach the AI proxy — ${error.message || "network error"}` }
+  // Determine fallback for this action
+  const fallbackForAction = (): ProxyData => {
+    if (action === "extract") {
+      const text = String(body.text ?? "")
+      const fb = extractLotFallback(text)
+      return { ok: true, text: JSON.stringify(fb), model: "fallback" }
+    }
+    if (action === "vision") {
+      return { ok: true, text: JSON.stringify(VISION_FALLBACK), model: "fallback" }
+    }
+    if (action === "chat") {
+      const history = (body.history ?? []) as { role: "user" | "agent"; text: string }[]
+      const lang = (body.lang as Lang) ?? "en"
+      return { ok: true, text: chatFallback(history, lang), model: "fallback" }
+    }
+    return { ok: false, error: "Circuit open — fallback unavailable for this action" }
   }
-  return proxyData
+
+  const protectedCall = withCircuitBreaker<ProxyData>(
+    "gemini-proxy",
+    async () => {
+      const started = Date.now()
+      const { data, error } = await supabase.functions.invoke("gemini-proxy", { body })
+      const latencyMs = Date.now() - started
+
+      // Log to Firestore (non-blocking, fire-and-forget)
+      const proxyData = (data ?? { ok: false, error: "Empty response from AI proxy" }) as ProxyData
+      const status: "ok" | "error" = error || !proxyData.ok ? "error" : "ok"
+      void logAiUsageToFirestore({
+        action,
+        model: (proxyData.model as string) ?? "gemini-flash-latest",
+        status,
+        error: status === "error" ? (error?.message ?? proxyData.error ?? "unknown") : undefined,
+        latencyMs,
+      })
+
+      if (error) {
+        throw new Error(`Could not reach the AI proxy — ${error.message || "network error"}`)
+      }
+      return proxyData
+    },
+    () => fallbackForAction(),
+  )
+
+  return protectedCall()
 }
 
 export async function checkAiStatus(): Promise<AiStatus> {
@@ -230,4 +277,68 @@ function chatFallback(history: { role: "user" | "agent"; text: string }[], lang:
     return "Today's tomato prices (PKR/kg): Multan 62 · Faisalabad 70 · Islamabad 84 · Lahore 96 · Karachi 105. Lahore is the best value once transport and spoilage are counted. Prices carry timestamps and confidence scores in the ticker above."
   }
   return "I can compare markets, estimate your net earnings after transport and spoilage, contact buyers, or book transport — nothing is sent without your approval. Try asking 'why Lahore?' or tap a suggestion below."
+}
+
+/* ──── Phase 3: ADK Agent client wrappers ──── */
+
+export interface AgentTurnResult {
+  ok: boolean
+  sessionId?: string
+  text: string
+  toolCalls: Array<{ name: string; args: Record<string, unknown> }>
+  requiresApproval: Array<{ name: string; args: Record<string, unknown> }>
+  error?: string
+}
+
+/**
+ * Send a user message to the ADK agent runtime in the Edge Function.
+ * Returns the agent's text response, tool calls, and any actions requiring approval.
+ */
+export async function agentTurn(
+  sessionId: string,
+  message: string,
+  context?: { lotContext?: Record<string, unknown>; orderContext?: Record<string, unknown> },
+): Promise<AgentTurnResult> {
+  const d = await callProxy({
+    action: "agent-turn",
+    sessionId,
+    userMessage: sanitizeForLLM(message),
+    ...context,
+  })
+  if (!d.ok) {
+    lastAiError = d.error ?? "Agent turn failed"
+    return { ok: false, text: "", toolCalls: [], requiresApproval: [], error: d.error }
+  }
+  return {
+    ok: true,
+    sessionId: (d.sessionId as string) ?? sessionId,
+    text: String(d.text ?? "").trim(),
+    toolCalls: (d.toolCalls as AgentTurnResult["toolCalls"]) ?? [],
+    requiresApproval: (d.requiresApproval as AgentTurnResult["requiresApproval"]) ?? [],
+  }
+}
+
+/**
+ * Execute approved write tools via the agent runtime.
+ */
+export async function agentExecuteApproved(
+  sessionId: string,
+  approvedToolCalls: Array<{ name: string; args: Record<string, unknown> }>,
+): Promise<AgentTurnResult> {
+  const d = await callProxy({
+    action: "agent-execute-approved",
+    sessionId,
+    approvedToolCalls,
+  })
+  if (!d.ok) {
+    lastAiError = d.error ?? "Agent execute failed"
+    return { ok: false, text: "", toolCalls: [], requiresApproval: [], error: d.error }
+  }
+  return {
+    ok: true,
+    sessionId: (d.sessionId as string) ?? sessionId,
+    text: String(d.text ?? "").trim(),
+    toolCalls: (d.toolCalls as AgentTurnResult["toolCalls"]) ?? [],
+    requiresApproval: [],
+  }
 }

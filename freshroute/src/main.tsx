@@ -27,6 +27,10 @@ const ProfilePage = lazy(() => import("@/pages/ProfilePage"))
 const NotificationsPage = lazy(() => import("@/pages/NotificationsPage"))
 const ChatPage = lazy(() => import("@/pages/ChatPage"))
 const SettingsPage = lazy(() => import("@/pages/SettingsPage"))
+const RoleSelectPage = lazy(() => import("@/pages/RoleSelectPage"))
+const RoleProfilePage = lazy(() => import("@/pages/RoleProfilePage"))
+const CreateListingPage = lazy(() => import("@/pages/CreateListingPage"))
+const BrowseListingsPage = lazy(() => import("@/pages/BrowseListingsPage"))
 
 // Admin pages
 const AdminDashboardPage = lazy(() => import("@/pages/admin/AdminDashboardPage"))
@@ -56,6 +60,10 @@ createRoot(document.getElementById("root")!).render(
 
           {/* Protected user routes */}
           <Route element={<ProtectedRoute />}>
+            {/* Onboarding routes (no layout) */}
+            <Route path="/role-select" element={<RoleSelectPage />} />
+            <Route path="/role-profile" element={<RoleProfilePage />} />
+
             <Route element={<AppLayout><Outlet /></AppLayout>}>
               <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/orders" element={<OrdersPage />} />
@@ -65,6 +73,8 @@ createRoot(document.getElementById("root")!).render(
               <Route path="/notifications" element={<NotificationsPage />} />
               <Route path="/chat" element={<ChatPage />} />
               <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/listings/new" element={<CreateListingPage />} />
+              <Route path="/listings" element={<BrowseListingsPage />} />
             </Route>
           </Route>
 

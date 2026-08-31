@@ -185,3 +185,56 @@ export const WEATHER = {
   Multan: { tempC: 38, condition: "Clear · hot afternoon" },
   Lahore: { tempC: 34, condition: "Partly cloudy" },
 }
+
+/* ──────────────────── Task 4: Perishability Profiles ──────────────────── */
+
+export interface PerishabilityProfile {
+  /** Base decay rate per hour (used in exponential decay formula) */
+  decayRatePerHour: number
+  /** Ideal temperature range in Celsius */
+  idealTempRange: { min: number; max: number }
+  /** Ideal humidity range in percent */
+  idealHumidityRange: { min: number; max: number }
+}
+
+/** Perishability profiles per crop — base for spoilage engine (Task 4) */
+export const PERISHABILITY_PROFILES: Record<string, PerishabilityProfile> = {
+  Tomato:            { decayRatePerHour: 0.008, idealTempRange: { min: 10, max: 15 }, idealHumidityRange: { min: 85, max: 95 } },
+  Potato:            { decayRatePerHour: 0.002, idealTempRange: { min: 7, max: 10 },  idealHumidityRange: { min: 90, max: 95 } },
+  Onion:             { decayRatePerHour: 0.003, idealTempRange: { min: 0, max: 5 },   idealHumidityRange: { min: 65, max: 75 } },
+  Mango:             { decayRatePerHour: 0.006, idealTempRange: { min: 10, max: 13 }, idealHumidityRange: { min: 85, max: 90 } },
+  Kinnow:            { decayRatePerHour: 0.003, idealTempRange: { min: 5, max: 8 },   idealHumidityRange: { min: 85, max: 90 } },
+  Banana:            { decayRatePerHour: 0.009, idealTempRange: { min: 13, max: 15 }, idealHumidityRange: { min: 85, max: 95 } },
+  "Green Chili":     { decayRatePerHour: 0.007, idealTempRange: { min: 7, max: 10 },  idealHumidityRange: { min: 85, max: 90 } },
+  Okra:              { decayRatePerHour: 0.008, idealTempRange: { min: 7, max: 10 },  idealHumidityRange: { min: 85, max: 90 } },
+  "Leafy Vegetables":{ decayRatePerHour: 0.012, idealTempRange: { min: 0, max: 4 },   idealHumidityRange: { min: 95, max: 100 } },
+}
+
+/** Transport mode multipliers for spoilage engine (Task 4) */
+export const MODE_FACTORS: Record<string, number> = {
+  refrigerated: 1.0,
+  ambient: 1.4,
+  none: 1.8,
+}
+
+/* ──────────────────── Task 6: Matching Weights ──────────────────── */
+
+/** Buyer matching weights (section 6 of spec) */
+export const MATCH_WEIGHTS = {
+  priceFit: 0.3,
+  quantityFit: 0.2,
+  proximity: 0.2,
+  reliability: 0.15,
+  urgency: 0.15,
+}
+
+/* ──────────────────── Task 7: Provider Matching Weights ──────────────────── */
+
+/** Provider (transporter/storage) scoring weights */
+export const PROVIDER_MATCH_WEIGHTS = {
+  cost: 0.25,
+  proximity: 0.2,
+  rating: 0.2,
+  capabilityMatch: 0.2,
+  spoilageRisk: 0.15,
+}

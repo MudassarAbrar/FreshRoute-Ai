@@ -37,7 +37,7 @@ export default function SignupPage() {
         city: form.city,
         address: form.address,
       })
-      navigate("/dashboard")
+      navigate("/role-select")
     } catch (err: any) {
       setError(err.message ?? "Signup failed")
     } finally {

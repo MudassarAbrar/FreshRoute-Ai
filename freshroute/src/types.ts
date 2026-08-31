@@ -1,5 +1,47 @@
 export type Role = "agent" | "user" | "system"
 
+export type UserRoleType = "farmer" | "buyer" | "transporter" | "storage_provider" | "admin"
+
+export interface UserRole {
+  id: string
+  userId: string
+  role: UserRoleType
+  status: "active" | "pending" | "disabled"
+  createdAt: string
+}
+
+/** Per-role extended profile data (stored as JSONB in role_profiles) */
+export interface FarmerProfile {
+  farmLocation?: string
+  primaryCrops?: string[]
+}
+export interface BuyerProfile {
+  orgName?: string
+  typicalCommodities?: string[]
+  deliveryRegions?: string[]
+  priceCeiling?: number
+}
+export interface TransporterProfile {
+  vehicleType?: string
+  capacityKg?: number
+  refrigerated?: boolean
+  serviceArea?: string
+}
+export interface StorageProviderProfile {
+  facilityType?: string
+  capacityUnits?: number
+  tempRange?: { min: number; max: number }
+  certifications?: string[]
+}
+export type RoleProfileData = FarmerProfile | BuyerProfile | TransporterProfile | StorageProviderProfile
+
+export interface RoleProfile {
+  id: string
+  userRoleId: string
+  profileJson: RoleProfileData
+  updatedAt: string
+}
+
 export interface Profile {
   id: string
   fullName: string
@@ -7,9 +49,11 @@ export interface Profile {
   phone: string
   city: string
   address: string
-  role: "farmer" | "admin"
+  role: UserRoleType
   customerCode: string
   createdAt: string
+  /** Active roles loaded from user_roles table */
+  roles?: UserRole[]
 }
 
 export type Packaging = "crates" | "sacks" | "loose"
@@ -42,6 +86,8 @@ export interface Lot {
   photos: string[]
   vision: VisionResult
   confidence: LotConfidence
+  /** Supabase listing ID once persisted (Task 2) */
+  listingId?: string
 }
 
 export interface Buyer {
@@ -78,6 +124,50 @@ export interface StorageFacility {
   verified: boolean
 }
 
+/* ──── Provider profile data from role_profiles JSONB (Phase 2) ──── */
+
+export interface BuyerProfileData {
+  userId: string
+  userRoleId: string
+  name: string
+  city: string
+  orgName?: string
+  typicalCommodities?: string[]
+  deliveryRegions?: string[]
+  priceCeiling?: number
+  acceptanceRate?: number
+  rejectionPct?: number
+  paymentTerms?: string
+  minKg?: number
+  maxKg?: number
+  verified?: boolean
+}
+
+export interface TransporterProfileData {
+  userId: string
+  userRoleId: string
+  name: string
+  city: string
+  vehicleType?: string
+  capacityKg?: number
+  refrigerated?: boolean
+  serviceArea?: string[]
+  ratePerKm?: number
+  onTimePct?: number
+}
+
+export interface StorageProviderProfileData {
+  userId: string
+  userRoleId: string
+  name: string
+  facilityType?: string
+  capacityUnits?: number
+  tempRange?: { min: number; max: number }
+  city?: string
+  perKgPerDay?: number
+  verified?: boolean
+}
+
 export interface PricePoint {
   city: string
   pricePerKg: number
@@ -104,6 +194,8 @@ export interface Scenario {
   deductions: Deduction[]
   net: number
   spoilagePct: number
+  /** Breakdown of contributing factors from the spoilage engine (Task 4) */
+  contributingFactors?: Record<string, number>
   risk: "Low" | "Medium" | "Medium-High"
   paymentTerms: string
   why: string[]
@@ -225,4 +317,42 @@ export interface QuickReply {
   label: string
   emoji?: string
   primary?: boolean
+}
+
+// ──────────────────────────── Task 2: Unified Listing ────────────────────────────
+
+export type ListingType = "lot" | "storage_slot" | "transport_slot" | "buyer_request"
+
+export interface Listing {
+  id: string
+  ownerUserId: string
+  listingType: ListingType
+  commodity: string
+  quantity: number
+  unit: string
+  locationGeo: string
+  price: number | null
+  availableFrom: string | null
+  availableTo: string | null
+  attributes: Record<string, unknown>
+  status: "active" | "sold" | "expired" | "cancelled"
+  createdAt: string
+}
+
+// ──────────────────────────── Task 9: Order State Machine ────────────────────────────
+
+export type OrderStatus =
+  | "LISTED" | "OFFER_RECEIVED" | "OFFER_ACCEPTED"
+  | "TRANSPORT_PENDING" | "TRANSPORT_BOOKED"
+  | "STORAGE_PENDING" | "STORAGE_BOOKED"
+  | "IN_TRANSIT" | "DELIVERED"
+  | "PAYMENT_PENDING" | "PAID" | "CLOSED"
+  | "CANCELLED" | "DISPUTED"
+
+export interface OrderEvent {
+  id: string
+  orderId: string
+  eventType: string
+  payload: Record<string, unknown>
+  createdAt: string
 }

@@ -12,6 +12,7 @@ import type {
   QuickReply,
   Scenario,
   Stage,
+  UserRole,
 } from "@/types"
 import type { Lang } from "@/i18n"
 import { uid } from "@/lib/format"
@@ -35,6 +36,8 @@ interface AppState {
   aiError: string
   session: Session | null
   profile: Profile | null
+  /** Active user roles loaded from user_roles table (Task 1) */
+  userRoles: UserRole[]
 
   addMsg: (m: Msg) => void
   setStage: (s: Stage) => void
@@ -51,6 +54,7 @@ interface AppState {
   boot: () => void
   setAiMode: (mode: AiMode, error?: string) => void
   setAuth: (session: Session | null, profile: Profile | null) => void
+  setUserRoles: (roles: UserRole[]) => void
 }
 
 export const useApp = create<AppState>((set, get) => ({
@@ -71,6 +75,7 @@ export const useApp = create<AppState>((set, get) => ({
   aiError: "",
   session: null,
   profile: null,
+  userRoles: [],
 
   addMsg: (m) => set((s) => ({ msgs: [...s.msgs, m] })),
   setStage: (stage) => set({ stage }),
@@ -115,6 +120,7 @@ export const useApp = create<AppState>((set, get) => ({
 
   setAiMode: (aiMode, error = "") => set({ aiMode, aiError: error }),
   setAuth: (session, profile) => set({ session, profile }),
+  setUserRoles: (userRoles) => set({ userRoles }),
 }))
 
 export const now = () => Date.now()

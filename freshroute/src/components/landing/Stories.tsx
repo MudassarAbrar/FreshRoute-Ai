@@ -199,7 +199,7 @@ export function Stories() {
   }, [])
 
   return (
-    <section id="stories" className="bg-background py-20 sm:py-28">
+    <section data-scroll-anchor id="stories" className="bg-background py-20 sm:py-28">
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
         <Reveal className="max-w-2xl">
           <p className="text-[14px] font-bold text-primary-700">// Real decisions</p>

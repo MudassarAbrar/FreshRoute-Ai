@@ -1,4 +1,14 @@
 @import url("https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu:wght@400;600;700&display=swap");
+@import "tw-shimmer";
+
+@font-face {
+  font-family: "Milker";
+  src: url("/fonts/Milker-Regular.otf") format("opentype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -16,7 +26,7 @@
     --card-foreground: 155 40% 10%;
     --popover: 0 0% 100%;
     --popover-foreground: 155 40% 10%;
-    --primary: 152 60% 26%;
+    --primary: 109 44% 47%;
     --primary-foreground: 0 0% 100%;
     --secondary: 140 22% 93%;
     --secondary-foreground: 152 60% 20%;
@@ -28,7 +38,7 @@
     --destructive-foreground: 0 0% 100%;
     --border: 130 14% 87%;
     --input: 130 14% 84%;
-    --ring: 152 60% 30%;
+    --ring: 109 44% 47%;
     --radius: 0.9rem;
 
     /* Chat surface */
@@ -59,14 +69,16 @@
 }
 
 @layer utilities {
-  /* Marketing page shell — soft sage (GROW-style promo palette) */
+  /* Marketing page shell — clean white background */
   .landing-shell {
-    --background: 110 25% 91%;
-    --secondary: 110 20% 85%;
-    --secondary-foreground: 152 60% 18%;
-    --muted: 110 18% 87%;
-    --muted-foreground: 156 14% 28%;
-    --border: 110 16% 79%;
+    --background: 0 0% 100%;
+    --foreground: 0 0% 8%;
+    --card: 0 0% 100%;
+    --secondary: 108 33% 89%;
+    --secondary-foreground: 112 42% 19%;
+    --muted: 108 36% 79%;
+    --muted-foreground: 0 0% 21%;
+    --border: 108 33% 89%;
     background-color: hsl(var(--background));
   }
 
@@ -125,5 +137,28 @@
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+@custom-variant data-open (&:where([data-state="open"], [data-open]:not([data-open="false"])));
+
+@custom-variant data-closed (&:where([data-state="closed"], [data-closed]:not([data-closed="false"])));
+
+@theme inline {
+  @keyframes collapsible-down {
+  from {
+    height: 0;
+    }
+  to {
+    height: var(--radix-collapsible-content-height, var(--collapsible-panel-height, auto));
+    }
+  }
+  @keyframes collapsible-up {
+  from {
+    height: var(--radix-collapsible-content-height, var(--collapsible-panel-height, auto));
+    }
+  to {
+    height: 0;
+    }
   }
 }

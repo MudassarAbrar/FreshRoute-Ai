@@ -1,6 +1,7 @@
 import { BUYERS, CROP_PRICES } from "@/data/market"
 import {
   buildScenarios,
+  buildScenariosAsync,
   COLD_STORAGE_PER_KG_DAY,
   gradePriceFactor,
   LOADING_COST,
@@ -11,20 +12,30 @@ import {
 } from "@/lib/engine"
 import {
   agentChat,
+  agentTurn,
   analyzePhoto,
   checkAiStatus,
   consumeAiError,
   extractLot,
+  sanitizeForLLM,
   type LotExtraction,
 } from "@/lib/gemini"
+import { checkAgentInteraction, checkOrderAction } from "@/lib/rateLimiter"
+import { isDomainAllowed } from "@/lib/orchestrator/planner"
 import { maund, pkr, uid } from "@/lib/format"
 import { L } from "@/lib/copy"
 import { t } from "@/i18n"
 import { agentText, useApp, userText } from "./useApp"
-import { saveOrder, updateOrderStatus } from "@/lib/db"
-import type { Lot, Msg, Packaging, QuickReply, Scenario } from "@/types"
+import { saveOrder } from "@/lib/db"
+import { transition } from "@/lib/orderStateMachine"
+import type { Lot, Msg, OrderStatus, Packaging, QuickReply, Scenario } from "@/types"
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+/** ADK session ID for multi-turn agent conversations */
+let adkSessionId = ""
+/** Tracks the current state-machine status per order for transition() validation */
+const orderCurrentStatus = new Map<string, OrderStatus>()
 
 async function say(text: string, thinkMs = 1300, label = "") {
   const st = useApp.getState()
@@ -121,7 +132,7 @@ async function intakeFlow(text: string) {
   st.setQuick([])
   st.setStage("analyzing")
   await say(L(lang, "Reading your message…", "آپ کا پیغام پڑھ رہا ہوں…"), 1200, "extracting")
-  const ex = await extractLot(text, useApp.getState().lang)
+  const ex = await extractLot(sanitizeForLLM(text), useApp.getState().lang)
   await surfaceAiError()
 
   if (!CROP_PRICES[ex.crop]) {
@@ -165,6 +176,53 @@ export async function onUserText(text: string) {
   const trimmed = text.trim()
   if (!trimmed) return
   useApp.getState().addMsg(userText(trimmed))
+
+  // Phase 1.1: Rate limit check (skip for anonymous/demo mode)
+  const userId = useApp.getState().session?.user?.id
+  if (userId) {
+    const rl = checkAgentInteraction(userId)
+    if (!rl.allowed) {
+      const mins = rl.retryAfterMs ? Math.ceil(rl.retryAfterMs / 60_000) : 60
+      useApp.getState().addMsg(agentText(
+        `You've reached the hourly limit. Try again in about ${mins} minute${mins === 1 ? "" : "s"}.`
+      ))
+      return
+    }
+  }
+
+  // Phase 6: All authenticated chat routes through ADK agent
+  if (userId) {
+    if (!adkSessionId) adkSessionId = `session-${userId}-${Date.now()}`
+    const result = await agentTurn(adkSessionId, trimmed)
+    if (result.ok) {
+      adkSessionId = result.sessionId ?? adkSessionId
+      if (result.text) {
+        await say(result.text, 600)
+      }
+      // Show approval cards for write tools
+      for (const tool of result.requiresApproval) {
+        useApp.getState().addMsg({
+          id: uid(),
+          role: "agent",
+          kind: "approval",
+          approval: {
+            id: uid(),
+            title: `Approve: ${tool.name.replace(/_/g, " ")}`,
+            subtitle: JSON.stringify(tool.args).slice(0, 200),
+            actions: [{ label: "Approve", detail: "Execute this action" }],
+            messageDraft: JSON.stringify(tool.args),
+            recipient: { name: tool.name, role: "system" },
+            status: "pending",
+          },
+          time: Date.now(),
+        } as any)
+      }
+    } else {
+      await say(`Sorry, something went wrong. Please try again.`, 400)
+    }
+    return
+  }
+
   const stage = useApp.getState().stage
   const lotLike = /(\d+\s*(kg|kilo|maund))|tomato|potato|onion|mango|kinnow|banana|okra|chili/i.test(trimmed)
   if (stage === "awaiting-intake" || stage === "welcome" || (stage === "completed" && lotLike)) {
@@ -329,7 +387,9 @@ export async function onClarifyConfirm(packaging: Packaging, storageAvailable: b
     2900,
     useApp.getState().lang === "ur" ? "منظرناموں کا انجن چل رہا ہے" : "running scenario engine",
   )
-  const scenarios = buildScenarios(lot)
+  const scenarios = useApp.getState().session?.user?.id
+    ? await buildScenariosAsync(lot)
+    : buildScenarios(lot)
   st.setScenarios(scenarios)
   useApp.getState().addMsg({
     id: uid(),
@@ -539,6 +599,17 @@ export async function onApproveFinal(transporterId: string) {
   const storage = rec.id === "store" ? lot.quantityKg * COLD_STORAGE_PER_KG_DAY : 0
   const loading = isLocal ? 0 : LOADING_COST
   const net = gross - chosen.cost - fee - commission - storage - loading
+  // Phase 1.1: Rate limit check for order creation
+  const rlUserId = useApp.getState().session?.user?.id
+  if (rlUserId) {
+    const orderId = "FR-" + Math.floor(2000 + Math.random() * 900)
+    const rl = checkOrderAction(orderId)
+    if (!rl.allowed) {
+      await say("You've reached the order action limit. Please try again later.", 800)
+      return
+    }
+  }
+
   st.setQuick([])
   st.setStage("tracking")
 
@@ -574,7 +645,9 @@ export async function onApproveFinal(transporterId: string) {
   st.addAudit("You", `Approved sale ${pkr(gross)} & booked ${chosen.transporter.name} (${pkr(chosen.cost)})`, true)
   useApp.getState().addAudit("System", `Order ${order.id} created · booking reference issued`)
 
-  // Persist order to Supabase
+  // Persist order to Supabase with state machine initial status
+  const orderStatus: OrderStatus = "TRANSPORT_BOOKED"
+  orderCurrentStatus.set(order.id, orderStatus)
   const userId = useApp.getState().session?.user?.id
   if (userId) {
     saveOrder({
@@ -609,144 +682,6 @@ export async function onApproveFinal(transporterId: string) {
       emoji: "🚚",
     },
   ])
-
-  scheduleTracking(rec)
-}
-
-function scheduleTracking(rec: Scenario) {
-  const isLocal = rec.id === "local"
-  const lang = () => useApp.getState().lang
-  const guard = () => useApp.getState().stage === "tracking"
-
-  setTimeout(() => {
-    if (!guard()) return
-    useApp.getState().updateOrder((o) => ({
-      ...o,
-      steps: o.steps.map((s, i) =>
-        i === 1 ? { ...s, state: "done", detail: `Picked up 7:04 AM · ${o.quantityKg} kg loaded` } :
-        i === 2 ? { ...s, state: "active" } : s,
-      ),
-    }))
-    useApp.getState().addAudit("System", `Pickup confirmed 7:04 AM · GPS match at origin`)
-  }, 3600)
-
-  setTimeout(() => {
-    if (!guard()) return
-    useApp.getState().updateOrder((o) => ({
-      ...o,
-      steps: o.steps.map((s, i) =>
-        (i === 2 ? { ...s, state: "alert", detail: isLocal ? "Heavy arrival day — auction queue ~1 hr" : "Traffic delay near Sheikhupura · ETA 3:10 PM" } : s),
-      ),
-    }))
-    useApp.getState().addMsg({
-      id: uid(),
-      role: "agent",
-      kind: "alert",
-      alert: isLocal
-        ? {
-            kind: "delay",
-            title: L(lang(), "Mandi update — heavy arrival day", "منڈی اپڈیٹ — آج آمد زیادہ ہے"),
-            body: L(
-              lang(),
-              `Tomato arrivals at ${rec.market} are unusually high today, so the auction queue is about an hour long. Your commission agent has the lot in line and the target rate is still achievable. No action needed — I'll confirm the sale.`,
-              `آج ${rec.market} میں ٹماٹر کی آمد غیر معمولی طور پر زیادہ ہے، اس لیے نیلام کی قطار تقریباً ایک گھنٹے کی ہے۔ آپ کا کمیشن ایجنٹ مال قطار میں لگوا چکا ہے اور ہدف ریٹ ابھی ممکن ہے۔ کچھ کرنے کی ضرورت نہیں — میں فروخت کی تصدیق کر دوں گا۔`,
-            ),
-          }
-        : {
-            kind: "delay",
-            title: L(lang(), "Delay detected — M-3 traffic", "تاخیر detected — M-3 ٹریفک"),
-            body: L(
-              lang(),
-              `Heavy traffic near Sheikhupura has pushed arrival to ~3:10 PM (45 min late). I've informed ${stripDot(rec.buyerName ?? "the buyer")} — they confirmed the delivery window is still fine. No action needed.`,
-              `شیخوپورہ کے قریب بھاری ٹریفک کی وجہ سے آمد ~3:10 PM ہو گئی ہے (45 منٹ تاخیر)۔ میں نے ${stripDot(rec.buyerName ?? "خریدار")} کو مطلع کر دیا ہے — انہوں نے تصدیق کی ہے کہ ڈیلیوری کا وقت اب بھی درست ہے۔ کچھ کرنے کی ضرورت نہیں۔`,
-            ),
-          },
-      time: Date.now(),
-    })
-    useApp.getState().addAudit("Agent", "Exception detected · counterparty notified automatically")
-  }, 6800)
-
-  setTimeout(() => {
-    if (!guard()) return
-    useApp.getState().updateOrder((o) => ({
-      ...o,
-      steps: o.steps.map((s, i) =>
-        i === 2 ? { ...s, state: "done", detail: isLocal ? "Auction done 11:35 AM" : "Arrived 3:07 PM" } :
-        i === 3 ? { ...s, state: "done", detail: isLocal ? "Sold at auction · weighed, 98% passed sorting" : "Delivered · 98% accepted (16 kg minor size rejects)" } :
-        i === 4 ? { ...s, state: "done", detail: `PKR paid · ${isLocal ? "cash same day" : rec.paymentTerms + " terms"}` } : s,
-      ),
-    }))
-    useApp.getState().addAudit("System", isLocal ? "Auction complete · 98% of lot passed sorting" : "Delivered 3:07 PM · 98% of lot accepted")
-  }, 10200)
-
-  setTimeout(async () => {
-    if (!guard()) return
-    const st = useApp.getState()
-    const orderMsg = [...st.msgs].reverse().find((m) => m.kind === "order")
-    if (orderMsg && orderMsg.kind === "order") {
-      const o = orderMsg.order
-      const acceptedKg = Math.round(o.quantityKg * 0.98)
-      const finalGross = acceptedKg * o.pricePerKg
-      const totalDeductions = o.gross - o.net
-      const finalNet = finalGross - totalDeductions
-      const local = st.scenarios.find((s) => s.id === "local")
-      const uplift = isLocal ? finalNet - rec.net : local ? finalNet - local.net : 0
-      useApp.getState().addMsg({
-        id: uid(),
-        role: "agent",
-        kind: "summary",
-        summary: {
-          title: L(lang(), "Sale completed 🎉", "فروخت مکمل ہو گئی 🎉"),
-          gross: finalGross,
-          net: finalNet,
-          upliftVsLocal: uplift,
-          upliftNote: isLocal ? L(lang(), "vs estimate", "تخمینے کے مقابلے") : L(lang(), "vs local mandi", "مقامی منڈی کے مقابلے"),
-          acceptedPct: 98,
-          lines: [
-            L(
-              lang(),
-              `${acceptedKg.toLocaleString()} of ${o.quantityKg.toLocaleString()} kg accepted (98%) — better than the 90% we planned for`,
-              `${o.quantityKg.toLocaleString()} میں سے ${acceptedKg.toLocaleString()} kg منظور (98%) — جو ہمارے تخمینے 90% سے بہتر ہے`,
-            ),
-            isLocal
-              ? L(
-                  lang(),
-                  `Sold at ${rec.market} auction — Grade ${st.lot?.vision.grade ?? "B"} estimate held up at weighment`,
-                  `${rec.market} کی نیلام میں فروخت — گریڈ ${st.lot?.vision.grade ?? "B"} کا تخمینہ تولائی پر درست رہا`,
-                )
-              : L(
-                  lang(),
-                  `Buyer accepted quality — Grade ${st.lot?.vision.grade ?? "B"} estimate held up at inspection`,
-                  `خریدار نے کوالٹی منظور کی — گریڈ ${st.lot?.vision.grade ?? "B"} کا تخمینہ معائنے پر درست رہا`,
-                ),
-            L(
-              lang(),
-              `Payment ${pkr(finalGross)} · ${isLocal ? "cash same day · 6% mandi commission" : `${rec.paymentTerms} terms · platform fee 1.5%`}`,
-              `ادائیگی ${pkr(finalGross)} · ${isLocal ? "نقد اسی دن · 6% منڈی کمیشن" : `${rec.paymentTerms} شرائط · پلیٹ فارم فیس 1.5%`}`,
-            ),
-          ],
-        },
-        time: Date.now(),
-      })
-      useApp.getState().addAudit("System", `Transaction completed · net to seller ${pkr(finalNet)}`)
-      useApp.getState().setStage("completed")
-
-      // Update order status in Supabase
-      const userId = useApp.getState().session?.user?.id
-      if (userId) {
-        updateOrderStatus(o.id, {
-          status: "completed",
-          final_net: finalNet,
-          completed_at: new Date().toISOString(),
-        }).catch(() => {})
-      }
-
-      quick([
-        { id: "great", label: L(lang(), "Great 😊", "بہت خوب 😊"), primary: true },
-        { id: "newlot", label: L(lang(), "Start a new lot", "نیا مال شروع کریں"), emoji: "🔄" },
-      ])
-    }
-  }, 11800)
 }
 
 /* ────────────────────────── freeform chat ────────────────────────── */
@@ -761,11 +696,26 @@ function optionsQuick(): QuickReply[] {
 }
 
 async function chatFlow(text: string) {
+  // Phase 1.4: Domain guardrail — deflect off-topic requests
+  if (!isDomainAllowed(text)) {
+    await say(
+      L(
+        useApp.getState().lang,
+        "I can help with selling produce, finding buyers, transport, storage, pricing and spoilage. Can you tell me more about your produce?",
+        "میں فصل بیچنے، خریدار تلاش کرنے، ٹرانسپورٹ، سٹوریج، قیمت اور خرابی میں مدد کر سکتا ہوں۔ کیا آپ اپنی فصل کے بارے میں مزید بتا سکتے ہیں؟",
+      ),
+      800,
+    )
+    return
+  }
+
   const st = useApp.getState()
+  // Phase 1.3: Sanitize user text before sending to LLM
+  const sanitizedText = sanitizeForLLM(text)
   const history = st.msgs
     .filter((m): m is Extract<Msg, { kind: "text" }> => m.kind === "text")
     .map((m) => ({ role: m.role === "user" ? ("user" as const) : ("agent" as const), text: m.text }))
-  history.push({ role: "user", text })
+  history.push({ role: "user", text: sanitizedText })
   await say("", 900, "thinking")
   const lotSummary = st.lot
     ? `${st.lot.crop} ${st.lot.quantityKg}kg Grade ${st.lot.vision.grade} in ${st.lot.location}, ready ${st.lot.readyDate}, ${st.lot.packaging}`

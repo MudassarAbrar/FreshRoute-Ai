@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom"
+import { useRef } from "react"
 import {
   ArrowRight,
   BadgeCheck,
@@ -18,7 +19,7 @@ import { AdminMockup } from "@/components/landing/AdminMockup"
 import { Stories } from "@/components/landing/Stories"
 import { Testimonials } from "@/components/landing/Testimonials"
 import { Pricing } from "@/components/ui/pricing"
-import Velaris from "@/components/ui/velaris"
+import { ScrollStroke } from "@/components/ui/svg-follow-scroll"
 import { Logo, Wordmark } from "@/components/landing/Logo"
 import { Reveal } from "@/components/landing/Reveal"
 
@@ -123,31 +124,10 @@ function FloatingCard({
 
 function Hero() {
   return (
-    <section className="relative overflow-hidden pt-28 sm:pt-36">
-      <div
-        className="pointer-events-none absolute inset-x-0 top-0 h-[720px]"
-        style={{
-          backgroundImage:
-            "radial-gradient(ellipse 45% 40% at 15% 0%, hsl(0 0% 100% / 0.5), transparent), radial-gradient(ellipse 40% 35% at 85% 10%, hsl(0 0% 100% / 0.35), transparent)",
-        }}
-      />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-x-0 top-[340px] select-none text-center font-display text-[23vw] font-extrabold leading-none tracking-tighter text-white/45"
-      >
-        FRESH
-      </div>
-
+    <section data-scroll-anchor className="relative overflow-hidden pt-28 sm:pt-36">
       <div className="relative mx-auto max-w-3xl px-4 text-center sm:px-6">
         <Reveal>
-          <span className="inline-flex items-center gap-2 rounded-full border border-primary-700/20 bg-white/70 px-4 py-1.5 text-[12px] font-bold text-primary-800 shadow-card">
-            <span className="h-1.5 w-1.5 animate-pulse-dot rounded-full bg-good" aria-hidden />
-            Pilot live · Multan → Lahore · tomatoes
-          </span>
-        </Reveal>
-
-        <Reveal delay={90}>
-          <h1 className="mt-6 font-display text-[2.9rem] font-extrabold leading-[1.04] tracking-tight text-foreground sm:text-[4rem]">
+          <h1 className="mt-2 font-hero text-[3.5rem] leading-[1.1] tracking-normal text-primary-800 sm:text-[5rem]">
             Sell your harvest where it's worth most.
           </h1>
         </Reveal>
@@ -276,7 +256,7 @@ const PROBLEMS = [
 
 function Problem() {
   return (
-    <section id="problem" className="py-20 sm:py-28">
+    <section data-scroll-anchor id="problem" className="py-20 sm:py-28">
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
         <Reveal className="max-w-2xl">
           <SectionLabel>The problem</SectionLabel>
@@ -324,7 +304,7 @@ function Problem() {
 
 function OneSystem() {
   return (
-    <section id="system" className="relative overflow-hidden py-20 sm:py-28">
+    <section data-scroll-anchor id="system" className="relative overflow-hidden py-20 sm:py-28">
       <div
         aria-hidden
         className="pointer-events-none absolute -right-24 top-10 select-none font-display text-[11rem] font-extrabold leading-none tracking-tighter text-white/40"
@@ -423,7 +403,7 @@ const DIFFERENTIATORS = [
 
 function HowItWorks() {
   return (
-    <section id="how" className="py-20 sm:py-28">
+    <section data-scroll-anchor id="how" className="py-20 sm:py-28">
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
         <div className="grid items-center gap-14 lg:grid-cols-[1fr_auto]">
           <Reveal>
@@ -517,7 +497,7 @@ const PRICING_PLANS = [
 
 function PricingSection() {
   return (
-    <section id="pricing" className="app-surface">
+    <section data-scroll-anchor id="pricing" className="app-surface">
       <Reveal>
         <Pricing
           eyebrow="Planned pricing"
@@ -538,19 +518,9 @@ function PricingSection() {
   )
 }
 
-const CTA_COLORS = ["#0c5c3a", "#1d9a5f", "#a3d9b1", "#052e1f"]
-
 function FinalCTA() {
   return (
-    <section className="relative overflow-hidden bg-primary-900">
-      <Velaris
-        bg="#0b3824"
-        colors={CTA_COLORS}
-        speed={1.1}
-        grain={0.25}
-        height="100%"
-        className="absolute inset-0"
-      />
+    <section data-scroll-anchor className="relative overflow-hidden bg-primary-900">
       <div
         aria-hidden
         className="pointer-events-none absolute inset-x-0 bottom-[-2rem] select-none text-center font-display text-[19vw] font-extrabold leading-none tracking-tighter text-white/10"
@@ -597,7 +567,7 @@ function FinalCTA() {
 
 function Footer() {
   return (
-    <footer className="border-t border-border bg-background py-12">
+    <footer data-scroll-anchor className="border-t border-border bg-background py-12">
       <div className="mx-auto grid max-w-6xl gap-10 px-4 sm:px-6 md:grid-cols-[1.2fr_0.8fr_1.4fr]">
         <div>
           <Wordmark />
@@ -640,18 +610,28 @@ function Footer() {
 }
 
 export default function LandingPage() {
+  const containerRef = useRef<HTMLDivElement>(null)
+
   return (
-    <div className="landing-shell min-h-screen font-sans text-foreground">
+    <div ref={containerRef} className="landing-shell relative min-h-screen font-sans text-foreground">
       <Nav />
-      <main>
-        <Hero />
-        <Problem />
-        <OneSystem />
-        <HowItWorks />
-        <Stories />
-        <Testimonials />
-        <PricingSection />
-        <FinalCTA />
+      <main className="relative">
+        <ScrollStroke
+          className="absolute inset-0 z-0 opacity-40"
+          strokeColor="#5AAD45"
+          strokeWidth={20}
+          containerRef={containerRef}
+        />
+        <div className="relative z-10">
+          <Hero />
+          <Problem />
+          <OneSystem />
+          <HowItWorks />
+          <Stories />
+          <Testimonials />
+          <PricingSection />
+          <FinalCTA />
+        </div>
       </main>
       <Footer />
     </div>

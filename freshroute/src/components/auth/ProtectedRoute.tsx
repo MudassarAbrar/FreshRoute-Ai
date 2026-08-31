@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import { Navigate, useLocation, Outlet } from "react-router-dom"
 import { useApp } from "@/store/useApp"
 import { fetchProfile, onAuthChange } from "@/lib/auth"
+import { fetchUserRoles } from "@/lib/db"
 import { Loader2 } from "lucide-react"
 
 export function ProtectedRoute({ adminOnly }: { adminOnly?: boolean }) {
@@ -33,8 +34,17 @@ export function ProtectedRoute({ adminOnly }: { adminOnly?: boolean }) {
             createdAt: new Date().toISOString(),
           },
         )
+        // Load multi-role data from user_roles table (Task 1)
+        try {
+          const roles = await fetchUserRoles(user.uid)
+          useApp.getState().setUserRoles(roles)
+        } catch {
+          // user_roles table may not exist yet if migration hasn't run
+          useApp.getState().setUserRoles([])
+        }
       } else {
         setAuth(null, null)
+        useApp.getState().setUserRoles([])
       }
       setLoading(false)
     })

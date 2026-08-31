@@ -36,6 +36,8 @@
 - [Core Modules](#-core-modules)
 - [Database Schema](#-database-schema)
 - [API Reference](#-api-reference)
+- [Marketplace](#-marketplace)
+- [Multi-Role System](#-multi-role-system)
 - [Admin Portal](#-admin-portal)
 - [AI Integration](#-ai-integration)
 - [Internationalization](#-internationalization)
@@ -93,6 +95,22 @@ Pakistan's fresh-produce supply chain loses an estimated **30–40% of fruit and
 | **Profile Management** | Contact details, customer code, transparency score |
 | **Settings** | Language toggle, AI mode status, account management |
 
+### 🏪 Marketplace
+
+| Feature | Description |
+|---|---|
+| **Unified Listings** | Create and browse listings for lots, storage slots, transport slots, and buyer requests |
+| **Offers System** | Submit and manage offers on listings with accept/reject/counter workflow |
+| **Transport Bookings** | Book transporters with pickup/dropoff windows, rates, and status tracking |
+| **Storage Bookings** | Reserve cold storage with date ranges, rates, and capacity management |
+| **Spoilage Assessments** | Automated risk scoring and loss estimation per listing |
+| **Recommendations** | AI-generated sale recommendations with accept/expire lifecycle |
+| **Provider Matching** | Weighted scoring for buyers (price, quantity, proximity, reliability, urgency) and transporters (cost, proximity, rating, capability, spoilage risk) |
+
+### 🌐 Landing Page
+
+Public-facing landing page showcasing the product value proposition, features, and call-to-action — accessible without authentication at `/`.
+
 ### 🔐 Approval-First Design
 
 Every financial action requires **explicit user approval** before execution:
@@ -105,6 +123,8 @@ Transport Booking (APPROVE) → Delivery Tracking → Payment Confirmation
 - The agent **never** sends messages, books transport, or commits funds without approval
 - All actions are timestamped in the **Action Log** for full audit trail
 - Approve/Reject buttons on every critical decision point
+- **Rate limiting** — 30 agent interactions/hour, 5 order actions/order to prevent abuse
+- **Domain guardrails** — AI deflects off-topic requests and sanitizes user input before LLM processing
 
 ### 🌍 Bilingual Support
 
@@ -117,6 +137,21 @@ Transport Booking (APPROVE) → Delivery Tracking → Payment Confirmation
 - All agent messages, quick replies, and UI elements switch language
 - Urdu chat bubbles render right-to-left
 - Gemini AI responses match selected language
+
+### 👥 Multi-Role System
+
+| Role | Description |
+|---|---|
+| **Farmer** | Default role for all new users — sell produce lots |
+| **Buyer** | Procurement with commodity preferences, delivery regions, price ceilings |
+| **Transporter** | Vehicle type, capacity, refrigeration, service area, rate per km |
+| **Storage Provider** | Facility type, capacity, temperature range, certifications |
+| **Admin** | System-wide management and monitoring |
+
+- Users can hold **multiple roles** simultaneously (e.g., farmer + transporter)
+- **Role onboarding** — dedicated role selection and profile pages at `/role-select` and `/role-profile`
+- Per-role **extended profiles** stored as JSONB in `role_profiles` table
+- Auto-farmer assignment on signup via database trigger
 
 ### 🏪 Admin Portal
 
@@ -238,9 +273,14 @@ Visible in user profile and admin dashboard — builds trust between farmers and
 ### Step 1 — Supabase Project
 
 1. Create a free project at [supabase.com](https://supabase.com) (any name, any region)
-2. Open **SQL Editor** and run the two migration files in order:
+2. Open **SQL Editor** and run the migration files in order:
    - [`supabase/migrations/0001_init.sql`](supabase/migrations/0001_init.sql) — Tables, Row Level Security, triggers, views, storage bucket
    - [`supabase/migrations/0002_seed.sql`](supabase/migrations/0002_seed.sql) — 18 demo customers with ~40 orders and reviews
+   - [`supabase/migrations/0003_multi_role.sql`](supabase/migrations/0003_multi_role.sql) — Multi-role support (user_roles, role_profiles)
+   - [`supabase/migrations/0004_listings.sql`](supabase/migrations/0004_listings.sql) — Unified listings model
+   - [`supabase/migrations/0005_marketplace_tables.sql`](supabase/migrations/0005_marketplace_tables.sql) — Offers, events, bookings, spoilage, recommendations
+   - [`supabase/migrations/0006_seed_marketplace.sql`](supabase/migrations/0006_seed_marketplace.sql) — Marketplace demo data
+   - [`supabase/migrations/0007_seed_providers.sql`](supabase/migrations/0007_seed_providers.sql) — Buyer, transporter, storage provider seed
 3. Copy your **Project URL** and **anon/public key** from **Settings → API**
 
 ### Step 2 — Frontend Environment
@@ -339,12 +379,15 @@ Every sign-in/sign-up goes through **Firebase Auth**, user profiles are stored i
 ```
 freshroute/
 ├── public/                          # Static assets
+│   ├── fonts/                       # Custom web fonts (Plus Jakarta Sans, Milker, etc.)
 │   ├── images/                      # App images and photos
 │   ├── favicon.svg                  # App favicon
 │   └── icons.svg                    # SVG icon sprites
 │
 ├── src/
 │   ├── components/                  # React components
+│   │   ├── ai-elements/             # 48 AI-related UI components
+│   │   ├── assistant-ui/            # Assistant-ui integration components
 │   │   ├── auth/
 │   │   │   └── ProtectedRoute.tsx   # Route guard for authenticated users
 │   │   ├── cards/                   # Chat message card components
@@ -355,12 +398,36 @@ freshroute/
 │   │   │   ├── OffersCard.tsx       # Buyer offers + transport options
 │   │   │   ├── OrderCard.tsx        # Order confirmation + tracking steps
 │   │   │   └── ScenariosCard.tsx    # Ranked market comparison scenarios
+│   │   ├── landing/                 # Landing page components
 │   │   ├── layout/
 │   │   │   ├── AdminLayout.tsx      # Admin portal sidebar layout
 │   │   │   └── AppLayout.tsx        # Main app layout with navigation
-│   │   ├── ui/
+│   │   ├── ui/                      # 28 reusable UI primitives
+│   │   │   ├── accordion.tsx        # Collapsible content sections
+│   │   │   ├── alert.tsx            # Alert banners
+│   │   │   ├── avatar.tsx           # User avatar display
+│   │   │   ├── badge.tsx            # Status badges
 │   │   │   ├── button.tsx           # CVA-based button with variants
-│   │   │   └── card.tsx             # Reusable card component
+│   │   │   ├── button-group.tsx     # Button grouping component
+│   │   │   ├── card.tsx             # Reusable card component
+│   │   │   ├── carousel.tsx         # Embla Carousel integration
+│   │   │   ├── collapsible.tsx      # Collapsible sections
+│   │   │   ├── command.tsx          # Command palette (cmdk)
+│   │   │   ├── dialog.tsx           # Modal dialogs
+│   │   │   ├── dropdown-menu.tsx    # Dropdown menus
+│   │   │   ├── hover-card.tsx       # Hover-triggered cards
+│   │   │   ├── input.tsx            # Text input component
+│   │   │   ├── input-group.tsx      # Grouped input component
+│   │   │   ├── popover.tsx          # Popover containers
+│   │   │   ├── progress.tsx         # Progress indicators
+│   │   │   ├── scroll-area.tsx      # Custom scrollable areas
+│   │   │   ├── select.tsx           # Select dropdowns
+│   │   │   ├── separator.tsx        # Visual dividers
+│   │   │   ├── spinner.tsx          # Loading spinners
+│   │   │   ├── switch.tsx           # Toggle switches
+│   │   │   ├── tabs.tsx             # Tab navigation
+│   │   │   ├── textarea.tsx         # Multi-line text input
+│   │   │   └── tooltip.tsx          # Tooltip overlays
 │   │   ├── AuditDrawer.tsx          # Action log slide-out drawer
 │   │   ├── Bubbles.tsx              # Chat bubble renderer (agent/user)
 │   │   ├── ChatBody.tsx             # Scrollable message list
@@ -373,52 +440,69 @@ freshroute/
 │   │   └── SettingsSheet.tsx        # Settings bottom sheet
 │   │
 │   ├── data/
-│   │   └── market.ts               # Market data (prices, buyers, transporters, distances)
+│   │   └── market.ts               # Market data (prices, buyers, transporters, distances,
+│   │                                #   perishability profiles, matching weights, weather)
+│   │
+│   ├── hooks/                       # Custom React hooks
+│   │   ├── use-attachment-src.ts    # Attachment source management
+│   │   ├── use-copy-to-clipboard.ts # Copy-to-clipboard utility
+│   │   └── use-media-query.ts       # Responsive media query hook
 │   │
 │   ├── lib/                         # Business logic & utilities
-│   │   ├── auth.ts                  # Supabase auth (signup, login, reset, session)
+│   │   ├── assistant-adapter.ts     # Assistant-ui adapter for Gemini chat
+│   │   ├── auth.ts                  # Firebase Auth service (email, Google, reset password)
+│   │   ├── circuitBreaker.ts        # Circuit breaker pattern for resilience
 │   │   ├── copy.ts                  # Copy-to-clipboard utility
 │   │   ├── db.ts                    # Database operations layer
 │   │   ├── engine.ts                # Pricing/spoilage/scenario calculation engine
-│   │   ├── auth.ts                  # Firebase Auth service (email, Google, reset password)
 │   │   ├── firebase.ts              # Firebase app init + Auth + Firestore client
 │   │   ├── firebaseAuth.ts          # Standalone Firebase Auth helpers
 │   │   ├── firestore.ts             # Firestore AI usage logging + real-time subscriptions
 │   │   ├── format.ts                # Currency (PKR), time, ID formatting
 │   │   ├── gemini.ts                # Gemini AI client (text, vision, chat)
+│   │   ├── matching.ts              # Buyer matching algorithm with weighted scoring
+│   │   ├── orderStateMachine.ts     # Order state machine with valid transitions
+│   │   ├── providerMatching.ts      # Transporter/storage matching algorithms
+│   │   ├── rateLimiter.ts           # Rate limiting (30 interactions/hr, 5 order actions)
+│   │   ├── spoilage.ts              # Spoilage estimation with exponential decay model
 │   │   ├── supabase.ts              # Supabase client initialization
 │   │   └── utils.ts                 # General utilities (cn class merger)
 │   │
-│   ├── pages/                       # Route pages
+│   ├── pages/                       # Route pages (all lazy-loaded)
 │   │   ├── admin/                   # Admin portal pages
 │   │   │   ├── AdminAnalyticsPage.tsx  # Revenue & order charts
 │   │   │   ├── AdminDashboardPage.tsx  # System overview stats
 │   │   │   ├── AdminOrdersPage.tsx     # All orders management
 │   │   │   ├── AdminSettingsPage.tsx   # AI status & config
 │   │   │   └── AdminUsersPage.tsx      # User management
+│   │   ├── BrowseListingsPage.tsx   # Marketplace listing browser
 │   │   ├── ChatPage.tsx             # Main agent chat interface
+│   │   ├── CreateListingPage.tsx    # Create new marketplace listing
 │   │   ├── DashboardPage.tsx        # User dashboard
 │   │   ├── ForgotPasswordPage.tsx   # Password reset request
+│   │   ├── LandingPage.tsx          # Public landing page
 │   │   ├── LoginPage.tsx            # Login form
 │   │   ├── NotificationsPage.tsx    # Notification feed
 │   │   ├── OrdersPage.tsx           # User order history
 │   │   ├── ProfilePage.tsx          # User profile
 │   │   ├── ResetPasswordPage.tsx    # Password reset form
 │   │   ├── RevenuePage.tsx          # Earnings analytics
+│   │   ├── RoleProfilePage.tsx      # Per-role profile setup
+│   │   ├── RoleSelectPage.tsx       # Multi-role onboarding
 │   │   ├── SettingsPage.tsx         # App settings
 │   │   ├── SignupPage.tsx           # Registration form
 │   │   └── TrackOrderPage.tsx       # Order delivery tracking
 │   │
 │   ├── store/                       # State management
-│   │   ├── director.ts             # Conversation director (946-line state machine)
+│   │   ├── director.ts             # Conversation director (989-line state machine)
 │   │   └── useApp.ts               # Zustand global store
 │   │
 │   ├── App.tsx                      # Root component
 │   ├── App.css                      # Global styles
-│   ├── i18n.ts                      # English/Urdu translation dictionary
+│   ├── i18n.ts                      # English/Urdu translation dictionary (43+ keys)
 │   ├── index.css                    # Tailwind base styles
-│   ├── main.tsx                     # React entry point
-│   ├── types.ts                     # TypeScript type definitions
+│   ├── main.tsx                     # React entry point with lazy routing
+│   ├── types.ts                     # TypeScript type definitions (315 lines)
 │   └── vite-env.d.ts               # Vite environment types
 │
 ├── supabase/
@@ -427,12 +511,18 @@ freshroute/
 │   │       └── index.ts            # Deno Edge Function — Gemini API proxy
 │   └── migrations/
 │       ├── 0001_init.sql           # Schema + RLS + triggers + views + storage
-│       └── 0002_seed.sql           # Demo data (18 customers, ~40 orders)
+│       ├── 0002_seed.sql           # Demo data (18 customers, ~40 orders)
+│       ├── 0003_multi_role.sql     # Multi-role support (user_roles, role_profiles)
+│       ├── 0004_listings.sql       # Unified listings model
+│       ├── 0005_marketplace_tables.sql # Offers, events, bookings, spoilage, recommendations
+│       ├── 0006_seed_marketplace.sql  # Marketplace demo data
+│       └── 0007_seed_providers.sql # Buyer, transporter, storage provider seed
 │
 ├── .env.example                    # Environment variable template
 ├── .env.local                      # Local environment (gitignored)
 ├── .gitignore                      # Git ignore rules
 ├── .oxlintrc.json                  # OXLint configuration
+├── components.json                 # shadcn/ui component config
 ├── index.html                      # HTML entry point
 ├── package.json                    # Dependencies & scripts
 ├── postcss.config.js               # PostCSS pipeline
@@ -449,7 +539,7 @@ freshroute/
 
 ### Director (`store/director.ts`)
 
-The **conversation director** is a 946-line state machine that orchestrates the entire trading workflow:
+The **conversation director** is a 989-line state machine that orchestrates the entire trading workflow:
 
 ```
 boot()              → Initialize session, greet user
@@ -457,8 +547,11 @@ intakeFlow()        → Parse user message → extract lot data (via Gemini)
 onPhotosChosen()    → Trigger vision analysis (via Gemini)
 onClarifyConfirm()  → Generate market scenarios (via engine.ts)
 proceedWith()       → Draft buyer outreach for approval
-onApproveFinal()    → Book order, initiate tracking
-scheduleTracking()  → Simulate delivery progress with alerts
+onApproveOutreach() → Send approved outreach, trigger offers flow
+offersFlow()        → Generate buyer offers with transport quotes
+onApproveFinal()    → Book order, persist to Supabase, initiate tracking
+scheduleTracking()  → Simulate delivery progress with timed alerts
+chatFlow()          → Free-form Q&A with domain guardrails and input sanitization
 ```
 
 ### Engine (`lib/engine.ts`)
@@ -471,6 +564,28 @@ Deterministic calculation engine for:
 | **Spoilage Estimation** | Calculates expected spoilage % based on crop, distance, storage |
 | **Scenario Scoring** | Ranks options by net revenue, risk, and timing |
 | **Transport Options** | Generates transporter quotes with vehicle types and costs |
+| **Grade Price Factor** | Adjusts price based on quality grade (A/B/C) |
+| **Cost Constants** | Mandi commission (6%), platform fee (1.5%), loading cost, local cartage, cold storage rates |
+
+### Spoilage Engine (`lib/spoilage.ts`)
+
+Exponential decay model using per-crop perishability profiles:
+
+| Parameter | Description |
+|---|---|
+| **Decay Rate** | Per-hour base rate by crop (e.g., Leafy Vegetables = 0.012, Potato = 0.002) |
+| **Temperature** | Ideal range per crop with deviation penalties |
+| **Humidity** | Ideal humidity range per crop |
+| **Transport Mode** | Refrigerated (1.0×), ambient (1.4×), none (1.8×) |
+
+### Provider Matching (`lib/providerMatching.ts`, `lib/matching.ts`)
+
+Weighted scoring algorithms for:
+
+| Match Type | Weights |
+|---|---|
+| **Buyer Matching** | Price fit (30%), quantity fit (20%), proximity (20%), reliability (15%), urgency (15%) |
+| **Provider Matching** | Cost (25%), proximity (20%), rating (20%), capability (20%), spoilage risk (15%) |
 
 ### State Store (`store/useApp.ts`)
 
@@ -478,15 +593,20 @@ Zustand-based global store managing:
 
 ```typescript
 {
-  stage: "welcome" | "awaiting-intake" | "analyzing" | "options" | "tracking" | "completed" | ...,
-  msgs: Msg[],              // Chat message history
-  lot: Lot | null,          // Current produce lot
+  stage: "welcome" | "awaiting-intake" | "analyzing" | "awaiting-photos" |
+         "awaiting-clarify" | "options" | "outreach-approval" | "outreach" |
+         "offers" | "final-approval" | "tracking" | "completed",
+  msgs: Msg[],              // Chat message history (11 message variants)
+  lot: Lot | null,          // Current produce lot with vision results
   scenarios: Scenario[],    // Generated market options
   audit: AuditEntry[],      // Action log
   lang: "en" | "ur",       // Current language
   aiMode: "checking" | "live" | "demo" | "error",
   session: Session | null,  // Auth session
   profile: Profile | null,  // User profile
+  userRoles: UserRole[],    // Active user roles from database
+  sheet: "none" | "photos" | "settings",
+  ticker: PricePoint[],     // Live mandi price ticker data
 }
 ```
 
@@ -494,12 +614,12 @@ Zustand-based global store managing:
 
 ## 🗄️ Database Schema
 
-### Tables
+### Core Tables
 
 | Table | Purpose | RLS |
 |---|---|---|
-| **profiles** | User accounts (farmer/admin), contact info, customer code | Read own or admin, update own |
-| **orders** | Transaction records — crop, quantity, pricing, status, tracking steps | Read own or admin, insert/update own |
+| **profiles** | User accounts (farmer/buyer/transporter/storage_provider/admin), contact info, customer code | Read own or admin, update own |
+| **orders** | Transaction records — crop, quantity, pricing, status, tracking steps, payment terms | Read own or admin, insert/update own |
 | **reviews** | User ratings (1–5) and feedback on completed orders | Read own or admin, insert own |
 | **notifications** | In-app alerts (delay, price, info, order) | Read/update own |
 | **audit_log** | Timestamped action history (Agent/You/System) | Read own or admin, insert own |
@@ -507,6 +627,26 @@ Zustand-based global store managing:
 | **chat_state** | Current conversation state for session recovery | All own |
 | **image_analyses** | Vision analysis results (grade, ripeness, defects) | Read own or admin, insert own |
 | **ai_usage** | AI API call logs for monitoring (model, latency, status) | Read own or admin |
+
+### Multi-Role Tables
+
+| Table | Purpose | RLS |
+|---|---|---|
+| **user_roles** | M2M user-to-role mapping (farmer, buyer, transporter, storage_provider) | Read own or admin, insert/update own |
+| **role_profiles** | Per-role extended profile data as JSONB | Read own or admin, insert/update own |
+
+### Marketplace Tables
+
+| Table | Purpose | RLS |
+|---|---|---|
+| **listings** | Unified listings (lots, storage slots, transport slots, buyer requests) | Read active or own, insert/update own |
+| **offers** | Offers on listings with accept/reject/counter workflow | Read own listing offers, create offers |
+| **order_events** | Order audit trail with event type and payload | Read own, system insert |
+| **spoilage_assessments** | Per-listing risk scores and loss estimates | Read own, insert own |
+| **recommendations** | AI-generated sale recommendations | Read own, insert own |
+| **transport_bookings** | Transporter bookings with pickup/dropoff windows | Read own, create bookings |
+| **storage_bookings** | Cold storage reservations with date ranges | Read own, create bookings |
+| **agent_action_log** | Agent action audit with approval tracking | Read all, system insert |
 
 ### Views
 
@@ -524,8 +664,23 @@ Zustand-based global store managing:
 
 - **Row Level Security** on every table
 - **Auto-profile creation** via `handle_new_user()` trigger on auth signup
-- **Transparent scoring** via `customer_metrics` materialized view
+- **Auto-farmer role** assigned to all new users via trigger
+- **Primary role sync** trigger keeps `profiles.role` in sync with `user_roles`
+- **Transparent scoring** via `customer_metrics` view
 - **`is_admin()` helper** used across RLS policies for admin-level access
+- **7 sequential migrations** for incremental schema evolution
+
+### Migration History
+
+| Migration | Description |
+|---|---|
+| `0001_init.sql` | Core schema: profiles, orders, reviews, notifications, audit_log, chat, image_analyses, ai_usage, customer_metrics view, lot-photos storage |
+| `0002_seed.sql` | 18 demo customers with ~40 orders and reviews |
+| `0003_multi_role.sql` | Multi-role support: user_roles, role_profiles, sync triggers, auto-farmer on signup |
+| `0004_listings.sql` | Unified listings model with type enum and JSONB attributes |
+| `0005_marketplace_tables.sql` | Offers, order_events, spoilage_assessments, recommendations, transport_bookings, storage_bookings, agent_action_log |
+| `0006_seed_marketplace.sql` | Demo marketplace data (listings, offers, order events) |
+| `0007_seed_providers.sql` | 4 buyers, 3 transporters, 1 storage provider with detailed role_profiles |
 
 ---
 
@@ -559,6 +714,66 @@ Multan, Lahore, Faisalabad, Islamabad, Karachi
 ### Crop Alias System
 
 Supports local names: ٹماٹر (tomato), آلو (potato), پیاز (onion), آم (mango), aloo, tamatar, pyaaz, mirch, etc.
+
+---
+
+## 🏪 Marketplace
+
+The unified marketplace enables multi-sided trading beyond the agent chat:
+
+### Listings
+
+Create listings in 4 categories:
+
+| Type | Description | Example |
+|---|---|---|
+| **lot** | Produce lots for sale | 800 kg Tomato, Grade B, Multan |
+| **storage_slot** | Cold storage capacity | 5000 units, 2–8°C, Multan |
+| **transport_slot** | Transport capacity | 2000 kg, Covered Mazda, Multan–Lahore |
+| **buyer_request** | Procurement requests | 500 kg Tomato, Grade B, Lahore, by Aug 25 |
+
+### Offer Workflow
+
+```
+Listing Created → Offer Submitted → Pending Review → Accepted/Rejected/Countered → Order Created
+```
+
+### Bookings
+
+- **Transport bookings** — pickup/dropoff windows, rates, status tracking (pending → confirmed → in_transit → completed)
+- **Storage bookings** — start/end dates, rates, capacity tracking (pending → confirmed → active → completed)
+
+### Spoilage & Recommendations
+
+- Automated spoilage risk scoring per listing with loss estimation
+- AI-generated recommendations with accept/expire lifecycle
+- Agent action audit trail with approval tracking
+
+---
+
+## 👥 Multi-Role System
+
+Users can hold multiple roles simultaneously, enabling full marketplace participation:
+
+### Role Types & Profile Data
+
+| Role | Profile Fields |
+|---|---|
+| **Farmer** | Farm location, primary crops |
+| **Buyer** | Org name, commodities, delivery regions, price ceiling |
+| **Transporter** | Vehicle type, capacity, refrigerated, service area |
+| **Storage Provider** | Facility type, capacity, temp range, certifications |
+
+### Onboarding Flow
+
+```
+Signup → Auto-farmer role → Role Selection (/role-select) → Role Profile (/role-profile) → Dashboard
+```
+
+- New users automatically receive the **farmer** role
+- Additional roles added via the role selection page
+- Per-role profile data stored as JSONB for flexible schema
+- `sync_primary_role()` trigger keeps backward compatibility with `profiles.role`
 
 ---
 

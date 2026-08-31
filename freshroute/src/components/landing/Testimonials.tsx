@@ -76,7 +76,7 @@ export function Testimonials() {
   }, [emblaApi, onSelect])
 
   return (
-    <section className="py-20 sm:py-28">
+    <section data-scroll-anchor className="py-20 sm:py-28">
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
         <Reveal className="mx-auto mb-12 max-w-2xl text-center">
           <p className="text-[14px] font-bold text-primary-700">// What growers say</p>
