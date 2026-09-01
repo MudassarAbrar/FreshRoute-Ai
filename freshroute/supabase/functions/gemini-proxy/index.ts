@@ -1,23 +1,20 @@
-// FreshRoute AI proxy — the ONLY place the Gemini API key lives.
-// Deploy (frontend invokes "smart-action"; "gemini-proxy" is kept as an alias):
-//   supabase functions deploy smart-action --project-ref tlfncoyrtsscirfnbvzg
-//   supabase functions deploy gemini-proxy --project-ref tlfncoyrtsscirfnbvzg
-// Secret: supabase secrets set GEMINI_API_KEY=your_key
+// FreshRoute AI proxy — routes through OpenRouter for multi-model access.
+// Deploy: supabase functions deploy gemini-proxy --project-ref tlfncoyrtsscirfnbvzg
+// Secrets:
+//   supabase secrets set OPENROUTER_API_KEY=sk-or-v1-...
+//   supabase secrets set GEMINI_API_KEY=... (optional fallback)
 //
 // POST { action: "status" | "extract" | "vision" | "chat" | "agent-turn" | "agent-execute-approved", ... }
 // Auth:  caller's Supabase JWT (verified) — no anonymous access.
-//
-// NOTE: keep this file dependency-light. Importing npm:@google/adk here made the
-// worker exceed the Edge Runtime size limit and crash on boot (BOOT_ERROR), so
-// the agent loop is implemented with native Gemini function calling instead.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { transitionOrder, type OrderStatus } from "../_shared/orderStateMachine.ts";
 import { checkAgentRateLimit, checkGlobalRateLimit, rateLimitedResponse } from "../_shared/serverRateLimiter.ts";
 import { sanitizeInput } from "../_shared/inputSanitizer.ts";
 
-const MODEL = "gemini-flash-latest";
-const GEMINI_KEY = Deno.env.get("GEMINI_API_KEY") ?? "";
+const MODEL = "google/gemini-2.0-flash-exp:free";
+const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+const OPENROUTER_KEY = Deno.env.get("OPENROUTER_API_KEY") ?? Deno.env.get("GEMINI_API_KEY") ?? "";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -32,48 +29,73 @@ const langNote = (lang: string) =>
 const jsonHeaders = { ...cors, "Content-Type": "application/json" };
 
 function bad(error: string) {
-  // HTTP 200 by design: functions.invoke surfaces app errors as parsed JSON, not thrown HTTP errors
   return new Response(JSON.stringify({ ok: false, error }), { status: 200, headers: jsonHeaders });
 }
 
-/** Call Gemini generateContent and return the raw parsed response. */
-async function geminiRaw(
-  body: unknown,
+// ─── OpenRouter API helpers (OpenAI-compatible) ─────────────────────
+
+interface ORMessage {
+  role: "system" | "user" | "assistant" | "tool";
+  content: string | Array<{ type: string; text?: string; image_url?: { url: string } }>;
+  tool_calls?: Array<{ id: string; type: "function"; function: { name: string; arguments: string } }>;
+  tool_call_id?: string;
+}
+
+interface ORToolDef {
+  type: "function";
+  function: { name: string; description: string; parameters: Record<string, unknown> };
+}
+
+/** Call OpenRouter and return the raw parsed response. */
+async function openRouterRaw(
+  messages: ORMessage[],
+  opts: { tools?: ORToolDef[]; temperature?: number; maxTokens?: number } = {},
 ): Promise<{ ok: true; data: Record<string, any> } | { ok: false; error: string }> {
   try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-goog-api-key": GEMINI_KEY },
-        body: JSON.stringify(body),
+    const body: Record<string, unknown> = {
+      model: MODEL,
+      messages,
+      ...(opts.tools ? { tools: opts.tools } : {}),
+      ...(opts.temperature != null ? { temperature: opts.temperature } : {}),
+      ...(opts.maxTokens ? { max_tokens: opts.maxTokens } : {}),
+    };
+    const res = await fetch(OPENROUTER_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${OPENROUTER_KEY}`,
+        "HTTP-Referer": "https://freshroute-amber.vercel.app",
+        "X-OpenRouter-Title": "FreshRoute Agent",
       },
-    );
+      body: JSON.stringify(body),
+    });
     if (!res.ok) {
       const detail = await res.text();
       const msg =
-        res.status === 400 && /API key/i.test(detail)
-          ? "Gemini rejected the API key (invalid key on server)"
-          : res.status === 404
-            ? `Model ${MODEL} not available for this key`
-            : res.status === 429
-              ? "Gemini rate limit reached — try again shortly"
-              : `Gemini error ${res.status}`;
+        res.status === 401
+          ? "OpenRouter API key rejected (invalid or expired)"
+          : res.status === 429
+            ? "AI rate limit reached — try again shortly"
+            : res.status === 503
+              ? "AI provider temporarily unavailable — try again"
+              : `AI provider error ${res.status}`;
       return { ok: false, error: msg };
     }
     const data = await res.json();
     return { ok: true, data };
   } catch (e) {
-    return { ok: false, error: `Network error calling Gemini: ${e instanceof Error ? e.message : "unknown"}` };
+    return { ok: false, error: `Network error calling AI: ${e instanceof Error ? e.message : "unknown"}` };
   }
 }
 
-/** Call Gemini and extract the concatenated text of the first candidate. */
-async function gemini(body: unknown): Promise<{ ok: true; text: string } | { ok: false; error: string }> {
-  const r = await geminiRaw(body);
+/** Call OpenRouter and extract the assistant's text response. */
+async function openRouterText(
+  messages: ORMessage[],
+  opts: { temperature?: number; maxTokens?: number } = {},
+): Promise<{ ok: true; text: string } | { ok: false; error: string }> {
+  const r = await openRouterRaw(messages, opts);
   if (!r.ok) return r;
-  const text: string =
-    r.data?.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text ?? "").join("") ?? "";
+  const text = r.data?.choices?.[0]?.message?.content ?? "";
   return { ok: true, text };
 }
 
@@ -119,7 +141,7 @@ Deno.serve(async (req) => {
     });
   };
 
-  // ── Phase 7: Server-side rate limiting ──────────────────────────
+  // ── Server-side rate limiting ────────────────────────────────────
   const globalLimit = checkGlobalRateLimit(userId);
   if (!globalLimit.allowed) return rateLimitedResponse(globalLimit);
 
@@ -128,24 +150,23 @@ Deno.serve(async (req) => {
     if (!agentLimit.allowed) return rateLimitedResponse(agentLimit);
   }
 
-  // ── Phase 7: Input sanitization ─────────────────────────────────
+  // ── Input sanitization ───────────────────────────────────────────
   if (payload.userMessage && typeof payload.userMessage === "string") {
     const sanitized = sanitizeInput(payload.userMessage);
     payload.userMessage = sanitized.sanitized;
   }
 
-  // ── status: is the server key configured & valid? ──────────────
+  // ── status: is the API key configured & valid? ──────────────────
   if (action === "status") {
-    if (!GEMINI_KEY) {
+    if (!OPENROUTER_KEY) {
       return new Response(
         JSON.stringify({ ok: true, configured: false, valid: false, mode: "demo" }),
         { headers: jsonHeaders },
       );
     }
-    const ping = await gemini({
-      contents: [{ role: "user", parts: [{ text: "Reply with the single word: ok" }] }],
-      generationConfig: { maxOutputTokens: 5 },
-    });
+    const ping = await openRouterText([
+      { role: "user", content: "Reply with the single word: ok" },
+    ], { maxTokens: 5 });
     if (!ping.ok) logUsage("error", ping.error);
     else logUsage("ok");
     return new Response(
@@ -161,13 +182,13 @@ Deno.serve(async (req) => {
     );
   }
 
-  if (!GEMINI_KEY) {
-    logUsage("error", "GEMINI_API_KEY not configured");
+  if (!OPENROUTER_KEY) {
+    logUsage("error", "OPENROUTER_API_KEY not configured");
     return new Response(
       JSON.stringify({
         ok: false,
         mode: "demo",
-        error: "GEMINI_API_KEY is not configured on the server — running in demo mode",
+        error: "AI API key is not configured on the server — running in demo mode",
       }),
       { status: 200, headers: jsonHeaders },
     );
@@ -177,42 +198,17 @@ Deno.serve(async (req) => {
   if (action === "extract") {
     const text = String(payload.text ?? "").slice(0, 4000);
     if (!text.trim()) return bad("Nothing to extract");
-    const result = await gemini({
-      systemInstruction: {
-        parts: [{ text: `${langNote(lang)} Return ONLY JSON matching the schema. Canonical crop and city values stay in English.` }],
+    const result = await openRouterText([
+      { role: "system", content: `${langNote(lang)} Return ONLY valid JSON matching the schema. Canonical crop and city values stay in English.` },
+      {
+        role: "user",
+        content:
+          `Extract the produce lot from this farmer message (may be Urdu, Roman Urdu or English): "${text}". ` +
+          `Supported crops: Tomato, Potato, Onion, Mango, Kinnow, Banana, Green Chili, Okra, Leafy Vegetables. ` +
+          `Cities: Multan, Lahore, Faisalabad, Islamabad, Karachi. If quantity is in maund, convert to kg (1 maund = 37.32 kg).\n\n` +
+          `Return JSON with fields: crop (string), quantityKg (number), location (string), readyText (string, e.g. "today"), confidence (object with crop, quantity, location as numbers 0-1).`,
       },
-      contents: [
-        {
-          role: "user",
-          parts: [
-            {
-              text:
-                `Extract the produce lot from this farmer message (may be Urdu, Roman Urdu or English): "${text}". ` +
-                `Supported crops: Tomato, Potato, Onion, Mango, Kinnow, Banana, Green Chili, Okra, Leafy Vegetables. ` +
-                `Cities: Multan, Lahore, Faisalabad, Islamabad, Karachi. If quantity is in maund, convert to kg (1 maund = 37.32 kg).`,
-            },
-          ],
-        },
-      ],
-      generationConfig: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: "object",
-          properties: {
-            crop: { type: "string" },
-            quantityKg: { type: "number" },
-            location: { type: "string" },
-            readyText: { type: "string", description: "today | tomorrow | a short date phrase" },
-            confidence: {
-              type: "object",
-              properties: { crop: { type: "number" }, quantity: { type: "number" }, location: { type: "number" } },
-              required: ["crop", "quantity", "location"],
-            },
-          },
-          required: ["crop", "quantityKg", "location", "readyText", "confidence"],
-        },
-      },
-    });
+    ]);
     if (!result.ok) {
       logUsage("error", result.error);
       return new Response(JSON.stringify({ ok: false, error: result.error }), { status: 200, headers: jsonHeaders });
@@ -228,36 +224,16 @@ Deno.serve(async (req) => {
     const cropHint = String(payload.cropHint ?? "produce").slice(0, 100);
     if (!imageBase64) return bad("No image provided");
     if (imageBase64.length > 7_000_000) return bad("Image too large");
-    const result = await gemini({
-      systemInstruction: { parts: [{ text: langNote(lang) }] },
-      contents: [
-        {
-          role: "user",
-          parts: [
-            { inlineData: { mimeType, data: imageBase64 } },
-            {
-              text:
-                `This is a farmer's photo of ${cropHint} for sale in Pakistan. Estimate visible quality. ` +
-                `This is a visual estimate only — never claim lab-grade certification. Respond in JSON.`,
-            },
-          ],
-        },
-      ],
-      generationConfig: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: "object",
-          properties: {
-            grade: { type: "string", description: "A | B | C" },
-            ripeness: { type: "string", description: "low | medium | medium-high | high" },
-            defectRate: { type: "number", description: "0-1 visible defect fraction" },
-            notes: { type: "array", items: { type: "string" } },
-            confidence: { type: "number" },
-          },
-          required: ["grade", "ripeness", "defectRate", "notes", "confidence"],
-        },
+    const result = await openRouterText([
+      { role: "system", content: langNote(lang) },
+      {
+        role: "user",
+        content: [
+          { type: "text", text: `This is a farmer's photo of ${cropHint} for sale in Pakistan. Estimate visible quality. This is a visual estimate only — never claim lab-grade certification.\n\nReturn JSON with fields: grade (A|B|C), ripeness (low|medium|medium-high|high), defectRate (0-1 fraction), notes (array of strings), confidence (0-1 number).` },
+          { type: "image_url", image_url: { url: `data:${mimeType};base64,${imageBase64}` } },
+        ],
       },
-    });
+    ]);
     if (!result.ok) {
       logUsage("error", result.error);
       return new Response(JSON.stringify({ ok: false, error: result.error }), { status: 200, headers: jsonHeaders });
@@ -270,39 +246,28 @@ Deno.serve(async (req) => {
   if (action === "chat") {
     const history = Array.isArray(payload.history) ? payload.history.slice(-10) : [];
     const ctx = payload.ctx as { lotSummary?: string; scenariosSummary?: string; pricesSummary?: string } ?? {};
-    const contents = [
+    const messages: ORMessage[] = [
+      {
+        role: "system",
+        content:
+          `You are FreshRoute Agent, an AI selling assistant for Pakistani farmers and produce traders.\n` +
+          `You help decide where, when and how to sell perishable produce — then execute outreach, transport and storage bookings, ALWAYS with explicit user approval before any outbound action.\n\n` +
+          `Rules:\n- Be concise (max 90 words), warm and practical. The user may be a farmer with basic literacy.\n` +
+          `- NEVER invent market prices. Only use prices given in the context below.\n` +
+          `- Distinguish facts from estimates. If unsure, say so.\n- Prices are in PKR per kg.\n` +
+          `- End with a helpful next step when natural.\n- ${langNote(lang)}`,
+      },
       {
         role: "user",
-        parts: [
-          {
-            text:
-              `CONTEXT:\nLot: ${ctx.lotSummary ?? "none"}\nScenarios: ${ctx.scenariosSummary ?? "none"}\nPrices: ${ctx.pricesSummary ?? "none"}`,
-          },
-        ],
+        content: `CONTEXT:\nLot: ${ctx.lotSummary ?? "none"}\nScenarios: ${ctx.scenariosSummary ?? "none"}\nPrices: ${ctx.pricesSummary ?? "none"}`,
       },
-      { role: "model", parts: [{ text: "Understood. I will only use these figures." }] },
+      { role: "assistant", content: "Understood. I will only use these figures." },
       ...history.map((m: { role?: string; text?: string }) => ({
-        role: m.role === "user" ? "user" : "model",
-        parts: [{ text: String(m.text ?? "").slice(0, 2000) }],
+        role: (m.role === "user" ? "user" : "assistant") as "user" | "assistant",
+        content: String(m.text ?? "").slice(0, 2000),
       })),
     ];
-    const result = await gemini({
-      systemInstruction: {
-        parts: [
-          {
-            text:
-              `You are FreshRoute Agent, an AI selling assistant for Pakistani farmers and produce traders.\n` +
-              `You help decide where, when and how to sell perishable produce — then execute outreach, transport and storage bookings, ALWAYS with explicit user approval before any outbound action.\n\n` +
-              `Rules:\n- Be concise (max 90 words), warm and practical. The user may be a farmer with basic literacy.\n` +
-              `- NEVER invent market prices. Only use prices given in the context below.\n` +
-              `- Distinguish facts from estimates. If unsure, say so.\n- Prices are in PKR per kg.\n` +
-              `- End with a helpful next step when natural.\n- ${langNote(lang)}`,
-          },
-        ],
-      },
-      contents,
-      generationConfig: { temperature: 0.7 },
-    });
+    const result = await openRouterText(messages, { temperature: 0.7 });
     if (!result.ok) {
       logUsage("error", result.error);
       return new Response(JSON.stringify({ ok: false, error: result.error }), { status: 200, headers: jsonHeaders });
@@ -311,7 +276,7 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ ok: true, text: result.text }), { headers: jsonHeaders });
   }
 
-  // ── agent-turn: native function-calling agent loop ─────────────
+  // ── agent-turn: function-calling agent loop (OpenRouter) ───────
   if (action === "agent-turn") {
     const sessionId = String(payload.sessionId ?? `session-${userId}-${Date.now()}`);
     const userMessage = String(payload.userMessage ?? "").slice(0, 4000);
@@ -376,155 +341,32 @@ Deno.serve(async (req) => {
   return bad(`Unknown action "${action}"`);
 });
 
-// ─── Agent runtime — native Gemini function calling (no ADK) ──────
-// The ADK npm package exceeded the Edge Runtime worker size limit and made the
-// function crash on boot, so this loop talks to the Gemini REST API directly.
+// ─── Agent runtime — OpenRouter function calling ────────────────────
+// OpenRouter uses the OpenAI-compatible tool-calling format.
 
-type Part = {
-  text?: string;
-  functionCall?: { name: string; args?: Record<string, unknown> };
-  functionResponse?: { name: string; response: unknown };
+type ORHistoryMessage = {
+  role: "system" | "user" | "assistant" | "tool";
+  content: string | Array<{ type: string; text?: string; image_url?: { url: string } }>;
+  tool_calls?: Array<{ id: string; type: "function"; function: { name: string; arguments: string } }>;
+  tool_call_id?: string;
 };
-type Content = { role: "user" | "model"; parts: Part[] };
 
 /** Write tools are never executed without explicit user approval. */
 const WRITE_TOOLS = ["send_offer_message", "book_transport", "book_storage", "update_order_status"];
 
-/** Tool schemas for the FreshRoute agent (mirrors adkAgent.ts). */
-const TOOL_DECLARATIONS = [
-  {
-    name: "get_lot_details",
-    description: "Retrieve lot/listing details by ID",
-    parameters: {
-      type: "object",
-      properties: { listingId: { type: "string" } },
-      required: ["listingId"],
-    },
-  },
-  {
-    name: "calculate_spoilage_risk",
-    description: "Calculate spoilage risk for a commodity",
-    parameters: {
-      type: "object",
-      properties: {
-        commodity: { type: "string" },
-        harvestDate: { type: "string" },
-        hours: { type: "number" },
-        transportMode: { type: "string", enum: ["refrigerated", "ambient", "none"] },
-        handlingEvents: { type: "number" },
-      },
-      required: ["commodity", "harvestDate", "hours"],
-    },
-  },
-  {
-    name: "search_buyers",
-    description: "Search for buyer profiles matching a commodity",
-    parameters: {
-      type: "object",
-      properties: { commodity: { type: "string" }, region: { type: "string" } },
-      required: ["commodity"],
-    },
-  },
-  {
-    name: "get_transport_quotes",
-    description: "Get transport provider quotes for a route",
-    parameters: {
-      type: "object",
-      properties: { originCity: { type: "string" }, destCity: { type: "string" }, crop: { type: "string" } },
-      required: ["originCity", "destCity"],
-    },
-  },
-  {
-    name: "get_storage_quotes",
-    description: "Get storage provider quotes",
-    parameters: {
-      type: "object",
-      properties: { city: { type: "string" }, neededDays: { type: "number" } },
-      required: ["city", "neededDays"],
-    },
-  },
-  {
-    name: "draft_offer_message",
-    description: "Draft an offer message to a buyer (does not send anything)",
-    parameters: {
-      type: "object",
-      properties: {
-        buyerName: { type: "string" },
-        commodity: { type: "string" },
-        quantity: { type: "number" },
-        grade: { type: "string" },
-        price: { type: "number" },
-        location: { type: "string" },
-      },
-      required: ["buyerName", "commodity", "quantity", "grade", "price", "location"],
-    },
-  },
-  {
-    name: "send_offer_message",
-    description: "Send offer to buyer — REQUIRES user approval before executing",
-    parameters: {
-      type: "object",
-      properties: {
-        listingId: { type: "string" },
-        price: { type: "number" },
-        quantity: { type: "number" },
-        message: { type: "string" },
-      },
-      required: ["listingId", "price", "quantity", "message"],
-    },
-  },
-  {
-    name: "book_transport",
-    description: "Book transporter — REQUIRES user approval before executing",
-    parameters: {
-      type: "object",
-      properties: {
-        orderId: { type: "string" },
-        transporterUserId: { type: "string" },
-        pickupWindow: { type: "string" },
-        dropoffWindow: { type: "string" },
-        rate: { type: "number" },
-      },
-      required: ["orderId", "transporterUserId", "pickupWindow", "dropoffWindow", "rate"],
-    },
-  },
-  {
-    name: "book_storage",
-    description: "Book storage — REQUIRES user approval before executing",
-    parameters: {
-      type: "object",
-      properties: {
-        orderOrLotId: { type: "string" },
-        storageUserId: { type: "string" },
-        startDate: { type: "string" },
-        endDate: { type: "string" },
-        rate: { type: "number" },
-      },
-      required: ["orderOrLotId", "storageUserId", "startDate", "endDate", "rate"],
-    },
-  },
-  {
-    name: "schedule_reminder",
-    description: "Schedule a reminder for a future action",
-    parameters: {
-      type: "object",
-      properties: { at: { type: "string" }, message: { type: "string" } },
-      required: ["at", "message"],
-    },
-  },
-  {
-    name: "update_order_status",
-    description: "Update order status — REQUIRES user approval before executing",
-    parameters: {
-      type: "object",
-      properties: {
-        orderId: { type: "string" },
-        status: { type: "string" },
-        previousStatus: { type: "string" },
-      },
-      required: ["orderId", "status"],
-    },
-  },
+/** Tool definitions in OpenRouter (OpenAI-compatible) format. */
+const OR_TOOLS: ORToolDef[] = [
+  { type: "function", function: { name: "get_lot_details", description: "Retrieve lot/listing details by ID", parameters: { type: "object", properties: { listingId: { type: "string" } }, required: ["listingId"] } } },
+  { type: "function", function: { name: "calculate_spoilage_risk", description: "Calculate spoilage risk for a commodity", parameters: { type: "object", properties: { commodity: { type: "string" }, harvestDate: { type: "string" }, hours: { type: "number" }, transportMode: { type: "string", enum: ["refrigerated", "ambient", "none"] }, handlingEvents: { type: "number" } }, required: ["commodity", "harvestDate", "hours"] } } },
+  { type: "function", function: { name: "search_buyers", description: "Search for buyer profiles matching a commodity", parameters: { type: "object", properties: { commodity: { type: "string" }, region: { type: "string" } }, required: ["commodity"] } } },
+  { type: "function", function: { name: "get_transport_quotes", description: "Get transport provider quotes for a route", parameters: { type: "object", properties: { originCity: { type: "string" }, destCity: { type: "string" }, crop: { type: "string" } }, required: ["originCity", "destCity"] } } },
+  { type: "function", function: { name: "get_storage_quotes", description: "Get storage provider quotes", parameters: { type: "object", properties: { city: { type: "string" }, neededDays: { type: "number" } }, required: ["city", "neededDays"] } } },
+  { type: "function", function: { name: "draft_offer_message", description: "Draft an offer message to a buyer (does not send anything)", parameters: { type: "object", properties: { buyerName: { type: "string" }, commodity: { type: "string" }, quantity: { type: "number" }, grade: { type: "string" }, price: { type: "number" }, location: { type: "string" } }, required: ["buyerName", "commodity", "quantity", "grade", "price", "location"] } } },
+  { type: "function", function: { name: "send_offer_message", description: "Send offer to buyer — REQUIRES user approval before executing", parameters: { type: "object", properties: { listingId: { type: "string" }, price: { type: "number" }, quantity: { type: "number" }, message: { type: "string" } }, required: ["listingId", "price", "quantity", "message"] } } },
+  { type: "function", function: { name: "book_transport", description: "Book transporter — REQUIRES user approval before executing", parameters: { type: "object", properties: { orderId: { type: "string" }, transporterUserId: { type: "string" }, pickupWindow: { type: "string" }, dropoffWindow: { type: "string" }, rate: { type: "number" } }, required: ["orderId", "transporterUserId", "pickupWindow", "dropoffWindow", "rate"] } } },
+  { type: "function", function: { name: "book_storage", description: "Book storage — REQUIRES user approval before executing", parameters: { type: "object", properties: { orderOrLotId: { type: "string" }, storageUserId: { type: "string" }, startDate: { type: "string" }, endDate: { type: "string" }, rate: { type: "number" } }, required: ["orderOrLotId", "storageUserId", "startDate", "endDate", "rate"] } } },
+  { type: "function", function: { name: "schedule_reminder", description: "Schedule a reminder for a future action", parameters: { type: "object", properties: { at: { type: "string" }, message: { type: "string" } }, required: ["at", "message"] } } },
+  { type: "function", function: { name: "update_order_status", description: "Update order status — REQUIRES user approval before executing", parameters: { type: "object", properties: { orderId: { type: "string" }, status: { type: "string" }, previousStatus: { type: "string" } }, required: ["orderId", "status"] } } },
 ];
 
 const AGENT_INSTRUCTION = `You are FreshRoute Agent, an AI selling assistant for Pakistani farmers and produce traders.
@@ -535,47 +377,42 @@ Default to Urdu when the user writes in Urdu, English when they write in English
 Before executing send_offer_message, book_transport, book_storage, or update_order_status, present the action details and wait for explicit user approval.`;
 
 /**
- * DB-backed session persistence — replaces in-memory Map so sessions
- * survive Edge Function cold starts. Falls back to in-memory if DB writes fail.
+ * DB-backed session persistence — stores OpenRouter-format messages.
+ * Falls back to in-memory if DB writes fail.
  */
 const MAX_SESSION_CONTENTS = 30;
-const sessionFallback = new Map<string, Content[]>();
+const sessionFallback = new Map<string, ORHistoryMessage[]>();
 
 async function loadSession(
   sessionId: string,
   admin: ReturnType<typeof createClient>,
-): Promise<Content[]> {
-  // Try DB first
+): Promise<ORHistoryMessage[]> {
   const { data, error } = await admin
     .from("agent_sessions")
     .select("contents")
     .eq("id", sessionId)
     .maybeSingle();
   if (data && !error) {
-    return (data.contents as Content[]) ?? [];
+    return (data.contents as ORHistoryMessage[]) ?? [];
   }
-  // Fallback to in-memory (cold start before migration applied, etc.)
   return sessionFallback.get(sessionId) ?? [];
 }
 
 async function saveSession(
   sessionId: string,
   userId: string,
-  contents: Content[],
+  contents: ORHistoryMessage[],
   admin: ReturnType<typeof createClient>,
 ): Promise<void> {
-  // Bound memory
   if (contents.length > MAX_SESSION_CONTENTS) {
     contents.splice(0, contents.length - MAX_SESSION_CONTENTS);
     while (contents.length > 0 && contents[0].role !== "user") contents.shift();
   }
-  // Keep in-memory fallback in sync
   sessionFallback.set(sessionId, contents);
   if (sessionFallback.size > 50) {
     const oldest = sessionFallback.keys().next().value;
     if (oldest) sessionFallback.delete(oldest);
   }
-  // Persist to DB (best-effort — don't block the response)
   void admin.from("agent_sessions").upsert({
     id: sessionId,
     user_id: userId,
@@ -583,6 +420,8 @@ async function saveSession(
     updated_at: new Date().toISOString(),
   }, { onConflict: "id" });
 }
+
+let toolCallCounter = 0;
 
 async function runAgentTurn(opts: {
   sessionId: string;
@@ -596,7 +435,7 @@ async function runAgentTurn(opts: {
   const { sessionId, userMessage, admin, userId } = opts;
 
   let history = await loadSession(sessionId, admin);
-  history.push({ role: "user", parts: [{ text: userMessage }] });
+  history.push({ role: "user", content: userMessage });
 
   const toolCalls: Array<{ name: string; args: Record<string, unknown> }> = [];
   const requiresApproval: Array<{ name: string; args: Record<string, unknown> }> = [];
@@ -604,29 +443,52 @@ async function runAgentTurn(opts: {
 
   const MAX_STEPS = 6;
   for (let step = 0; step < MAX_STEPS; step++) {
-    const r = await geminiRaw({
-      systemInstruction: { parts: [{ text: AGENT_INSTRUCTION }] },
-      contents: history,
-      tools: [{ functionDeclarations: TOOL_DECLARATIONS }],
-      generationConfig: { temperature: 0.7 },
-    });
+    const messages: ORMessage[] = [
+      { role: "system", content: AGENT_INSTRUCTION },
+      ...history.map((m): ORMessage => {
+        const msg: ORMessage = { role: m.role, content: m.content };
+        if (m.tool_calls) msg.tool_calls = m.tool_calls;
+        if (m.tool_call_id) msg.tool_call_id = m.tool_call_id;
+        return msg;
+      }),
+    ];
+
+    const r = await openRouterRaw(messages, { tools: OR_TOOLS, temperature: 0.7 });
     if (!r.ok) return { ok: false, error: r.error };
 
-    const parts: Part[] = r.data?.candidates?.[0]?.content?.parts ?? [];
-    history.push({ role: "model", parts });
+    const choice = r.data?.choices?.[0];
+    const responseMessage = choice?.message;
+    if (!responseMessage) return { ok: false, error: "Empty response from AI" };
 
-    const responses: Part[] = [];
-    let hasToolCall = false;
-    for (const part of parts) {
-      if (part.text) agentText += part.text;
-      if (!part.functionCall) continue;
-      hasToolCall = true;
-      const name = part.functionCall.name;
-      const args = (part.functionCall.args ?? {}) as Record<string, unknown>;
+    const content = responseMessage.content ?? "";
+    const toolCallsRaw = responseMessage.tool_calls ?? [];
+
+    // Accumulate assistant text
+    if (content) agentText += content;
+
+    // Store assistant message in history
+    const assistantMsg: ORHistoryMessage = { role: "assistant", content: content || "" };
+    if (toolCallsRaw.length > 0) {
+      assistantMsg.tool_calls = toolCallsRaw.map((tc: any) => ({
+        id: tc.id ?? `call_${++toolCallCounter}`,
+        type: "function" as const,
+        function: { name: tc.function?.name ?? "", arguments: tc.function?.arguments ?? "{}" },
+      }));
+    }
+    history.push(assistantMsg);
+
+    // Process tool calls
+    if (toolCallsRaw.length === 0) break; // No more tool calls — done
+
+    for (const tc of toolCallsRaw) {
+      const name = tc.function?.name ?? "";
+      let args: Record<string, unknown> = {};
+      try { args = JSON.parse(tc.function?.arguments ?? "{}"); } catch { /* ignore */ }
+      const callId = tc.id ?? `call_${++toolCallCounter}`;
+
       toolCalls.push({ name, args });
 
       if (WRITE_TOOLS.includes(name)) {
-        // Write tools never run without explicit user approval.
         requiresApproval.push({ name, args });
         void admin.from("agent_action_log").insert({
           agent_run_id: sessionId,
@@ -636,14 +498,10 @@ async function runAgentTurn(opts: {
           requires_approval: true,
           status: "pending_approval",
         });
-        responses.push({
-          functionResponse: {
-            name,
-            response: {
-              status: "pending_user_approval",
-              note: "The user must approve this action before it executes. Present the details and ask for approval.",
-            },
-          },
+        history.push({
+          role: "tool",
+          content: JSON.stringify({ status: "pending_user_approval", note: "The user must approve this action before it executes. Present the details and ask for approval." }),
+          tool_call_id: callId,
         });
       } else {
         const result = await executeReadTool(name, args, admin);
@@ -655,22 +513,22 @@ async function runAgentTurn(opts: {
           requires_approval: false,
           status: "executed",
         });
-        responses.push({ functionResponse: { name, response: { result } } });
+        history.push({
+          role: "tool",
+          content: JSON.stringify({ result }),
+          tool_call_id: callId,
+        });
       }
     }
-    if (!hasToolCall) break;
-    history.push({ role: "user", parts: responses });
   }
 
   // Bound memory + persist to DB
   await saveSession(sessionId, userId, history, admin);
 
-  // Phase 2: Anti-fabrication — strip claims about write tools that are still pending approval.
-  // Write tools require user approval, so any claim that an action "succeeded" is fabricated.
+  // Anti-fabrication — strip claims about write tools still pending approval.
   const pendingWriteNames = requiresApproval.map((a) => a.name);
   let sanitizedText = agentText;
   if (pendingWriteNames.length > 0) {
-    // Replace common fabricated claim patterns
     sanitizedText = sanitizedText
       .replace(/(?:offer|message|proposal)\s+(?:sent|delivered)\s+to\s+.+?on\s+WhatsApp\s*[✓✔️✅]?/gi,
         "Offer prepared — pending your approval to send")
@@ -698,7 +556,6 @@ async function executeReadTool(
     }
     case "calculate_spoilage_risk": {
       const hours = Number(p.hours ?? 0);
-      // Simplified spoilage model for agent use
       const baseLoss = Math.min(0.45, hours * 0.004);
       return { expectedLossPct: Math.round(baseLoss * 1000) / 1000, commodity: p.commodity, hours };
     }
@@ -812,7 +669,6 @@ async function executeWriteTool(
         return { ok: true, bookingId: data?.id };
       }
       case "update_order_status": {
-        // Phase 1: Route through state machine instead of direct DB write
         const result = await transitionOrder(admin, p.orderId as string, p.status as OrderStatus, {
           source: "agent",
           actorType: "agent",
