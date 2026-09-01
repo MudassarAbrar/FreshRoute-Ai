@@ -3,3 +3,6 @@ supabase.exe
 supabase-go.exe
 supabase_cli.tar.gz
 supabase_cli.zip
+
+# Google OAuth credentials
+client_secret_*.json
