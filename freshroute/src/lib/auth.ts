@@ -31,6 +31,7 @@ export function friendlyAuthError(err: unknown): string {
   if (msg.includes("email is invalid") || msg.includes("invalid email")) return "That email address doesn't look right. Please check it and try again."
   if (msg.includes("network") || msg.includes("fetch")) return "Network error — check your internet connection and try again."
   if (msg.includes("session not found") || msg.includes("token has expired")) return "Your session has expired. Please sign in again."
+  if (msg.includes("unsupported provider") || msg.includes("provider is not enabled")) return "Google sign-in is not available yet. Please use email and password to sign in."
   if (msg.includes("otp expired")) return "The password reset link has expired. Please request a new one."
   const original = (err as { message?: string })?.message
   if (original) return original
