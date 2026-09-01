@@ -1,4 +1,4 @@
-import { BUYERS, CROP_PRICES } from "@/data/market"
+import { CROP_PRICES } from "@/data/cropReference"
 import {
   buildScenarios,
   buildScenariosAsync,
@@ -499,20 +499,20 @@ export async function onApproveOutreach(approvalId: string, ok: boolean) {
     L(
       useApp.getState().lang,
       localNotice
-        ? `Arrival notice sent to ${stripDot(msg.approval.recipient.name)} on WhatsApp ✓ Arranging cartage and auction…`
-        : `Offer sent to ${stripDot(msg.approval.recipient.name)} on WhatsApp ✓ Requesting transport quotes…`,
+        ? `Arrival notice prepared for ${stripDot(msg.approval.recipient.name)}. WhatsApp delivery pending confirmation — arranging cartage and auction…`
+        : `Offer prepared for ${stripDot(msg.approval.recipient.name)}. WhatsApp delivery pending confirmation — requesting transport quotes…`,
       localNotice
-        ? `${stripDot(msg.approval.recipient.name)} کو واٹس ایپ پر آمد کی اطلاع بھیج دی گئی ✓ گاڑی اور نیلام کا انتظام کر رہا ہوں…`
-        : `${stripDot(msg.approval.recipient.name)} کو واٹس ایپ پر پیشکش بھیج دی گئی ✓ ٹرانسپورٹ کے اقتباسات مانگ رہا ہوں…`,
+        ? `${stripDot(msg.approval.recipient.name)} کے لیے آمد کی اطلاع تیار ہے۔ واٹس ایپ ترسیل کی تصدیق زیر التوا — گاڑی اور نیلام کا انتظام کر رہا ہوں…`
+        : `${stripDot(msg.approval.recipient.name)} کے لیے پیشکش تیار ہے۔ واٹس ایپ ترسیل کی تصدیق زیر التوا — ٹرانسپورٹ کے اقتباسات مانگ رہا ہوں…`,
     ),
     1400,
   )
-  useApp.getState().addAudit("Agent", `WhatsApp message delivered to ${msg.approval.recipient.name} · read receipt received`)
+  useApp.getState().addAudit("Agent", `Outreach approved for ${msg.approval.recipient.name} · WhatsApp delivery status: pending`)
   await say(
     L(
       useApp.getState().lang,
-      localNotice ? "Your commission agent is replying…" : `${stripDot(msg.approval.recipient.name).split(" ")[0]} is typing…`,
-      localNotice ? "آپ کا کمیشن ایجنٹ جواب دے رہا ہے…" : `${stripDot(msg.approval.recipient.name).split(" ")[0]} پیغام لکھ رہا ہے…`,
+      localNotice ? "Waiting for commission agent response…" : `Waiting for ${stripDot(msg.approval.recipient.name).split(" ")[0]}'s response…`,
+      localNotice ? "کمیشن ایجنٹ کے جواب کا انتظار…" : `${stripDot(msg.approval.recipient.name).split(" ")[0]} کے جواب کا انتظار…`,
     ),
     2200,
   )
@@ -540,7 +540,6 @@ async function offersFlow() {
   const storage = rec.id === "store" ? lot.quantityKg * COLD_STORAGE_PER_KG_DAY : 0
   const loading = isLocal ? 0 : LOADING_COST
   const expectedNet = gross - transportCost - fee - commission - storage - loading
-  const buyer = BUYERS.find((b) => b.name === rec.buyerName)
   const buyerLine = isLocal
     ? `Auction arranged — targeting PKR ${pricePerKg}/kg at ${rec.market} · cash ${rec.paymentTerms.toLowerCase()}`
     : premium
@@ -573,8 +572,8 @@ async function offersFlow() {
         : storage > 0
           ? "− transport − cold storage − 1.5% fee"
           : "− transport − 1.5% fee",
-      buyerAcceptance: buyer?.acceptanceRate ?? 95,
-      buyerResponse: buyer?.responseTime ?? "quick response",
+      buyerAcceptance: 95,
+      buyerResponse: "quick response",
     },
     time: Date.now(),
   })
@@ -797,14 +796,61 @@ export async function truckStatus() {
         1300,
       )
     } else {
-      await say(
-        L(
-          lang,
-          "Your truck is on the M-3 near Sheikhupura — about 63 km from Lahore. Current ETA 3:10 PM. The delay alert was already sent to the buyer, who confirmed the window is fine.",
-          "آپ کی گاڑی M-3 پر شیخوپورہ کے قریب ہے — لاہور سے تقریباً 63 کلومیٹر۔ موجودہ ETA 3:10 PM۔ تاخیر کی اطلاع خریدار کو بھیج دی گئی ہے، جس نے تصدیق کی ہے کہ وقت درست ہے۔",
-        ),
-        1300,
-      )
+      // Phase 3: Query location_pings instead of returning hardcoded GPS
+      try {
+        const { supabase } = await import("@/lib/supabase")
+        const sb = supabase
+        if (sb) {
+          const { data: ping } = await sb
+            .from("latest_location_pings")
+            .select("*")
+            .limit(1)
+            .single()
+
+          if (!ping) {
+            await say(
+              L(lang,
+                "Location tracking not yet active for this order. GPS updates will appear once the transporter's app starts reporting.",
+                "اس آرڈر کے لیے لوکیشن ٹریکنگ ابھی فعال نہیں۔ جب ٹرانسپورٹر کی ایپ رپورٹنگ شروع کرے گی تو GPS اپڈیٹس نظر آئیں گی۔",
+              ),
+              1300,
+            )
+          } else {
+            const { isStale, reverseGeocode, formatLocationStatus } = await import("@/lib/routing")
+            const stale = isStale(ping.recorded_at)
+            const geo = await reverseGeocode(ping.latitude, ping.longitude)
+            const status = formatLocationStatus(ping, null, geo)
+            const simLabel = geo.isSimulated ? " (Simulated)" : ""
+            await say(
+              L(lang,
+                `Your truck: ${status}${simLabel}`,
+                `آپ کی گاڑی: ${status}${simLabel}`,
+              ),
+              1300,
+            )
+            if (stale) {
+              useApp.getState().addAudit("Agent", "Location ping is stale (>15 min old) — displayed with warning")
+            }
+          }
+        } else {
+          // No Supabase client available (anonymous mode) — honest fallback
+          await say(
+            L(lang,
+              "Location tracking requires authentication. Sign in to view real-time truck position.",
+              "لوکیشن ٹریکنگ کے لیے تصدیق ضروری ہے۔ گاڑی کی حقیقی وقت کی پوزیشن دیکھنے کے لیے سائن ان کریں۔",
+            ),
+            1100,
+          )
+        }
+      } catch {
+        await say(
+          L(lang,
+            "Unable to fetch truck location right now. GPS tracking service is temporarily unavailable.",
+            "اس وقت گاڑی کی لوکیشن حاصل نہیں ہو سکی۔ GPS ٹریکنگ سروس عارضی طور پر دستیاب نہیں۔",
+          ),
+          1100,
+        )
+      }
     }
   } else {
     await say(

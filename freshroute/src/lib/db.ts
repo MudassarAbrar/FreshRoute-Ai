@@ -745,9 +745,50 @@ export async function updateMessageStatus(messageId: string, status: "delivered"
 }
 
 /**
- * WhatsApp stub — mock function that can be swapped for real API later.
- * Returns a mock delivery confirmation.
+ * Send a WhatsApp message through the messaging provider abstraction.
+ * Uses SimulatedMessagingProvider when WhatsApp credentials are not configured.
+ * Returns delivery status with honest labeling of simulated vs. live delivery.
  */
-export async function sendWhatsApp(_recipient: string, _content: string): Promise<{ delivered: boolean; messageId: string }> {
-  return { delivered: true, messageId: "mock-" + Date.now() }
+export async function sendWhatsApp(
+  recipient: string,
+  content: string,
+  opts?: { orderId?: string; offerId?: string; idempotencyKey?: string },
+): Promise<{ delivered: boolean; messageId: string; isSimulated: boolean; status: string }> {
+  // Dynamic import to avoid circular dependencies
+  const { createMessagingProvider } = await import("@/lib/messaging/provider")
+  const provider = createMessagingProvider()
+
+  const result = await provider.sendMessage(recipient, {
+    type: "text",
+    text: content,
+  })
+
+  // Persist the message record with provider metadata
+  const idempotencyKey = opts?.idempotencyKey ?? `wa-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+
+  if (result.success) {
+    // Best-effort persistence — don't block the response
+    void supabase.from("messages").insert({
+      sender_user_id: "system",
+      recipient_user_id: "system",
+      content,
+      channel: result.isSimulated ? "simulated" : "whatsapp_cloud",
+      direction: "outbound",
+      status: result.status,
+      provider: result.provider,
+      provider_message_id: result.providerMessageId,
+      idempotency_key: idempotencyKey,
+      rendered_body: content,
+      order_id: opts?.orderId ?? null,
+      offer_id: opts?.offerId ?? null,
+      sent_at: new Date().toISOString(),
+    })
+  }
+
+  return {
+    delivered: result.success && (result.status === "sent" || result.status === "delivered"),
+    messageId: result.providerMessageId ?? `failed-${Date.now()}`,
+    isSimulated: result.isSimulated,
+    status: result.status,
+  }
 }

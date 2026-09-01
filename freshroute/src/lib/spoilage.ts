@@ -6,7 +6,7 @@
  *
  * Uses PERISHABILITY_PROFILES and MODE_FACTORS from market.ts.
  */
-import { CROP_VOLATILITY, MODE_FACTORS, PERISHABILITY_PROFILES } from "@/data/market"
+import { CROP_VOLATILITY, MODE_FACTORS, PERISHABILITY_PROFILES } from "@/data/cropReference"
 
 export interface SpoilageInput {
   commodity: string

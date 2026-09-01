@@ -14,32 +14,31 @@ export function ProtectedRoute({ adminOnly }: { adminOnly?: boolean }) {
 
   useEffect(() => {
     let mounted = true
-    const { data: sub } = onAuthChange(async (user) => {
+    const { subscription } = onAuthChange(async (user) => {
       if (!mounted) return
       if (user) {
-        // Firebase user is authenticated — fetch profile from Firestore/Supabase
-        const prof = await fetchProfile(user.uid)
-        // Store user info as a lightweight session-like object
+        // Supabase Auth user — fetch profile from public.profiles
+        const prof = await fetchProfile(user.id)
         setAuth(
-          { user: { id: user.uid, email: user.email ?? "" } } as any,
+          { user } as any,
           prof ?? {
-            id: user.uid,
-            fullName: user.displayName ?? "",
+            id: user.id,
+            fullName: user.user_metadata?.fullName ?? user.email ?? "",
             email: user.email ?? "",
-            phone: "",
-            city: "",
-            address: "",
+            phone: user.user_metadata?.phone ?? "",
+            city: user.user_metadata?.city ?? "",
+            address: user.user_metadata?.address ?? "",
             role: "farmer",
             customerCode: "",
             createdAt: new Date().toISOString(),
           },
         )
-        // Load multi-role data from user_roles table (Task 1)
+        // Load multi-role data from user_roles table
         try {
-          const roles = await fetchUserRoles(user.uid)
+          const roles = await fetchUserRoles(user.id)
           useApp.getState().setUserRoles(roles)
         } catch {
-          // user_roles table may not exist yet if migration hasn't run
+          // user_roles may not exist if migration hasn't run
           useApp.getState().setUserRoles([])
         }
       } else {
@@ -50,7 +49,7 @@ export function ProtectedRoute({ adminOnly }: { adminOnly?: boolean }) {
     })
     return () => {
       mounted = false
-      sub.subscription.unsubscribe()
+      subscription.unsubscribe()
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 

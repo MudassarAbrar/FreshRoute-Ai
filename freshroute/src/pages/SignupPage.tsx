@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { signUp, signInWithGoogle } from "@/lib/auth"
-import { Leaf, Loader2, Eye, EyeOff } from "lucide-react"
+import { Leaf, Loader2, Eye, EyeOff, CheckCircle2 } from "lucide-react"
 
 const CITIES = ["Multan", "Lahore", "Faisalabad", "Islamabad", "Karachi", "Rawalpindi", "Vehari", "Khanewal", "Sahiwal", "Other"]
 
@@ -19,6 +19,7 @@ export default function SignupPage() {
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
+  const [confirmSent, setConfirmSent] = useState("")
 
   const set = (key: string, value: string) => setForm((f) => ({ ...f, [key]: value }))
 
@@ -31,13 +32,18 @@ export default function SignupPage() {
     }
     setLoading(true)
     try {
-      await signUp(form.email, form.password, {
+      const { session } = await signUp(form.email, form.password, {
         fullName: form.fullName,
         phone: form.phone,
         city: form.city,
         address: form.address,
       })
-      navigate("/role-select")
+      if (session) {
+        navigate("/role-select")
+      } else {
+        // Email confirmation required — show message
+        setConfirmSent(form.email)
+      }
     } catch (err: any) {
       setError(err.message ?? "Signup failed")
     } finally {
@@ -49,13 +55,10 @@ export default function SignupPage() {
     setError("")
     setGoogleLoading(true)
     try {
+      // Supabase OAuth redirects the browser to Google — no popup
       await signInWithGoogle()
-      navigate("/dashboard")
     } catch (err: any) {
-      if (err.code !== "auth/popup-closed-by-user") {
-        setError(err.message ?? "Google sign-in failed")
-      }
-    } finally {
+      setError(err.message ?? "Google sign-in failed")
       setGoogleLoading(false)
     }
   }
@@ -76,6 +79,20 @@ export default function SignupPage() {
 
         {/* Card */}
         <div className="rounded-2xl border border-border bg-card p-6 shadow-card">
+          {confirmSent ? (
+            <div className="flex flex-col items-center gap-4 py-4 text-center">
+              <CheckCircle2 className="h-12 w-12 text-good" />
+              <h2 className="text-lg font-extrabold text-foreground">Check your email</h2>
+              <p className="text-[13px] text-muted-foreground">
+                We sent a confirmation link to <span className="font-bold text-foreground">{confirmSent}</span>.
+                Click the link to verify your email, then sign in.
+              </p>
+              <Link to="/login" className="mt-2 text-[13px] font-bold text-primary-600 hover:underline">
+                Back to Sign In
+              </Link>
+            </div>
+          ) : (
+          <>
           {error && (
             <div className="mb-4 rounded-xl border border-risk/30 bg-risk/5 px-4 py-3 text-[13px] font-medium text-risk">
               {error}
@@ -193,8 +210,10 @@ export default function SignupPage() {
                 <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
               </svg>
             )}
-            {googleLoading ? "Connecting…" : "Sign up with Google"}
+            {googleLoading ? "Connecting\u2026" : "Sign up with Google"}
           </button>
+          </>
+          )}
         </div>
 
         <p className="mt-5 text-center text-[13px] text-muted-foreground">

@@ -8,7 +8,15 @@
 - [types.ts](file://freshroute/src/types.ts)
 - [market.ts](file://freshroute/src/data/market.ts)
 - [package.json](file://freshroute/package.json)
+- [monitor-check/index.ts](file://freshroute/supabase/functions/monitor-check/index.ts)
 </cite>
+
+## Update Summary
+**Changes Made**
+- Updated AI proxy endpoint reference from 'gemini-proxy' to 'smart-action' throughout the documentation
+- Added clarification about the platform standardization effort and dual deployment strategy
+- Updated architectural diagrams to reflect the new endpoint naming
+- Noted that gemini-proxy is maintained as an alias for backward compatibility
 
 ## Table of Contents
 1. [Introduction](#introduction)
@@ -25,6 +33,8 @@
 ## Introduction
 This document explains the Supabase Edge Function proxy that securely integrates Google Gemini for text extraction, image analysis, and chat conversations. The proxy is the only place where the Gemini API key exists at runtime. It validates requests, enforces authentication via Supabase JWTs, routes actions to Gemini, formats responses, and logs usage metrics. The client-side library calls the proxy through Supabase Functions, keeping secrets out of the browser bundle.
 
+**Updated** The AI proxy endpoint has been migrated from 'gemini-proxy' to 'smart-action' as part of a platform standardization effort. All AI proxy requests now route through the new 'smart-action' Supabase Edge Function while maintaining backward compatibility with the legacy 'gemini-proxy' endpoint.
+
 ## Project Structure
 The implementation spans two layers:
 - Server layer (Supabase Edge Function): authenticates callers, validates payloads, calls Gemini with a server-only API key, and returns structured JSON.
@@ -38,27 +48,31 @@ B["src/lib/supabase.ts"]
 end
 subgraph "Supabase Edge Function"
 C["supabase/functions/gemini-proxy/index.ts"]
+D["Deployed as: smart-action"]
+E["Legacy alias: gemini-proxy"]
 end
 subgraph "External Services"
-D["Google Gemini API"]
-E["Supabase Auth"]
-F["Supabase DB (ai_usage)"]
+F["Google Gemini API"]
+G["Supabase Auth"]
+H["Supabase DB (ai_usage)"]
 end
 A --> B
 B --> C
-C --> D
-C --> E
 C --> F
+C --> G
+C --> H
+D --> C
+E --> C
 ```
 
 **Diagram sources**
-- [index.ts:1-282](file://freshroute/supabase/functions/gemini-proxy/index.ts#L1-L282)
-- [gemini.ts:1-200](file://freshroute/src/lib/gemini.ts#L1-L200)
+- [index.ts:1-761](file://freshroute/supabase/functions/gemini-proxy/index.ts#L1-L761)
+- [gemini.ts:1-345](file://freshroute/src/lib/gemini.ts#L1-L345)
 - [supabase.ts:1-19](file://freshroute/src/lib/supabase.ts#L1-L19)
 
 **Section sources**
-- [index.ts:1-282](file://freshroute/supabase/functions/gemini-proxy/index.ts#L1-L282)
-- [gemini.ts:1-200](file://freshroute/src/lib/gemini.ts#L1-L200)
+- [index.ts:1-761](file://freshroute/supabase/functions/gemini-proxy/index.ts#L1-L761)
+- [gemini.ts:1-345](file://freshroute/src/lib/gemini.ts#L1-L345)
 - [supabase.ts:1-19](file://freshroute/src/lib/supabase.ts#L1-L19)
 
 ## Core Components
@@ -71,6 +85,8 @@ Key responsibilities:
 - Routing: dispatch based on action values: status, extract, vision, chat.
 - Response formatting: enforce JSON schemas for structured outputs.
 - Observability: log per-request usage and latency to a database table.
+
+**Updated** The client now invokes the 'smart-action' endpoint while the underlying implementation remains in the gemini-proxy function file, which is deployed under both names for compatibility.
 
 **Section sources**
 - [index.ts:10-101](file://freshroute/supabase/functions/gemini-proxy/index.ts#L10-L101)
@@ -85,11 +101,11 @@ sequenceDiagram
 participant UI as "Client App"
 participant Lib as "gemini.ts"
 participant SF as "Supabase Functions"
-participant EF as "Edge Function"
+participant EF as "Edge Function (smart-action)"
 participant GEM as "Gemini API"
 participant DB as "Supabase DB"
 UI->>Lib : call agentChat / extractLot / analyzePhoto
-Lib->>SF : invoke("gemini-proxy", {action,...})
+Lib->>SF : invoke("smart-action", {action,...})
 SF->>EF : forward request with JWT
 EF->>EF : verify JWT, parse payload
 alt action=status
@@ -105,6 +121,8 @@ end
 SF-->>Lib : data
 Lib-->>UI : parsed result or fallback
 ```
+
+**Updated** The sequence diagram now shows the client invoking the 'smart-action' endpoint instead of 'gemini-proxy'.
 
 **Diagram sources**
 - [index.ts:61-101](file://freshroute/supabase/functions/gemini-proxy/index.ts#L61-L101)
@@ -133,7 +151,7 @@ Error handling:
 - Specific mapping for common Gemini errors (invalid key, model not available, rate limit).
 
 Rate limiting:
-- No built-in rate limiter in this function; relies on Gemini’s own limits and application-level retries/backoff.
+- No built-in rate limiter in this function; relies on Gemini's own limits and application-level retries/backoff.
 
 Logging:
 - Every request writes an ai_usage row including user_id, action, model, status, optional error, and latency_ms.
@@ -167,10 +185,6 @@ LogVision --> Resp
 LogChat --> Resp
 ```
 
-**Diagram sources**
-- [index.ts:61-101](file://freshroute/supabase/functions/gemini-proxy/index.ts#L61-L101)
-- [index.ts:103-281](file://freshroute/supabase/functions/gemini-proxy/index.ts#L103-L281)
-
 **Section sources**
 - [index.ts:10-101](file://freshroute/supabase/functions/gemini-proxy/index.ts#L10-L101)
 - [index.ts:103-281](file://freshroute/supabase/functions/gemini-proxy/index.ts#L103-L281)
@@ -192,6 +206,8 @@ Caching strategy:
 
 Error propagation:
 - Last AI error is stored and can be consumed once by the UI to surface meaningful feedback.
+
+**Updated** The client library now invokes the 'smart-action' endpoint (line 75) instead of the legacy 'gemini-proxy' endpoint, while maintaining the same functionality and fallback mechanisms.
 
 **Section sources**
 - [gemini.ts:28-42](file://freshroute/src/lib/gemini.ts#L28-L42)
@@ -222,11 +238,6 @@ Edge --> Gemini["Google Gemini API"]
 Edge --> DB["Supabase DB (ai_usage)"]
 Types --> Client
 ```
-
-**Diagram sources**
-- [gemini.ts:1-4](file://freshroute/src/lib/gemini.ts#L1-L4)
-- [index.ts:8-11](file://freshroute/supabase/functions/gemini-proxy/index.ts#L8-L11)
-- [package.json:12-22](file://freshroute/package.json#L12-L22)
 
 **Section sources**
 - [package.json:12-22](file://freshroute/package.json#L12-L22)
@@ -261,6 +272,8 @@ Observability:
 - Inspect ai_usage rows for failed requests, errors, and latency outliers.
 - Use the last AI error consumer to display actionable messages to users.
 
+**Updated** If you encounter issues with the endpoint migration, note that the 'smart-action' endpoint is now the primary target while 'gemini-proxy' remains available as a backward-compatible alias.
+
 **Section sources**
 - [index.ts:61-101](file://freshroute/supabase/functions/gemini-proxy/index.ts#L61-L101)
 - [index.ts:103-281](file://freshroute/supabase/functions/gemini-proxy/index.ts#L103-L281)
@@ -268,6 +281,8 @@ Observability:
 
 ## Conclusion
 The Supabase Edge Function proxy centralizes Gemini integration with strong security, clear routing, and robust logging. By keeping the API key server-side, validating JWTs, enforcing schemas, and providing fallbacks, it delivers a resilient experience for text extraction, image analysis, and chat. For production, add rate limiting, retries, and enhanced monitoring to ensure stability under load.
+
+**Updated** The recent migration to the 'smart-action' endpoint represents a platform standardization effort while maintaining full backward compatibility through the legacy 'gemini-proxy' alias.
 
 [No sources needed since this section summarizes without analyzing specific files]
 
@@ -308,6 +323,8 @@ Environment variables (server-side):
 - SUPABASE_ANON_KEY: Used to verify caller JWT.
 - SUPABASE_SERVICE_ROLE_KEY: Used to write ai_usage logs bypassing RLS.
 
+**Updated** All endpoints now route through the 'smart-action' Supabase Edge Function, though the legacy 'gemini-proxy' endpoint remains available for backward compatibility.
+
 **Section sources**
 - [index.ts:103-281](file://freshroute/supabase/functions/gemini-proxy/index.ts#L103-L281)
 - [gemini.ts:36-42](file://freshroute/src/lib/gemini.ts#L36-L42)
@@ -339,3 +356,31 @@ Environment variables (server-side):
 - [index.ts:61-75](file://freshroute/supabase/functions/gemini-proxy/index.ts#L61-L75)
 - [index.ts:142-145](file://freshroute/supabase/functions/gemini-proxy/index.ts#L142-L145)
 - [index.ts:191-196](file://freshroute/supabase/functions/gemini-proxy/index.ts#L191-L196)
+
+### Endpoint Migration Notes
+**New Section**
+
+The AI proxy endpoint has been migrated from 'gemini-proxy' to 'smart-action' as part of a platform standardization effort. Key points:
+
+- **Primary Endpoint**: All client-side code now invokes 'smart-action' (gemini.ts line 75)
+- **Backward Compatibility**: The 'gemini-proxy' endpoint remains available as an alias
+- **Implementation Location**: The actual code remains in gemini-proxy/index.ts but is deployed under both names
+- **Migration Strategy**: Gradual transition with dual support during the migration period
+
+**Deployment Commands**:
+```bash
+# Deploy as smart-action (primary)
+supabase functions deploy smart-action --project-ref tlfncoyrtsscirfnbvzg
+
+# Deploy as gemini-proxy (alias for backward compatibility)
+supabase functions deploy gemini-proxy --project-ref tlfncoyrtsscirfnbvzg
+```
+
+**Monitoring Impact**: 
+- The monitor-check function still references the legacy endpoint and should be updated to use 'smart-action' for consistency
+- All logging and metrics continue to work regardless of which endpoint is called
+
+**Section sources**
+- [gemini.ts:75](file://freshroute/src/lib/gemini.ts#L75)
+- [index.ts:2-4](file://freshroute/supabase/functions/gemini-proxy/index.ts#L2-L4)
+- [monitor-check/index.ts:86](file://freshroute/supabase/functions/monitor-check/index.ts#L86)

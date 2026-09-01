@@ -1,6 +1,6 @@
 import { create } from "zustand"
 import type { Session } from "@supabase/supabase-js"
-import { tickerPrices } from "@/data/market"
+import { CROP_PRICES } from "@/data/cropReference"
 import type {
   AuditEntry,
   ApprovalRequest,
@@ -69,7 +69,10 @@ export const useApp = create<AppState>((set, get) => ({
   lang: "en",
   sheet: "none",
   drawerAudit: false,
-  ticker: tickerPrices("Tomato"),
+  ticker: Object.entries(CROP_PRICES.Tomato).map(([city, pricePerKg]) => ({
+    city, pricePerKg, trend: city === "Karachi" ? -2 : city === "Lahore" ? 4 : 1,
+    freshnessMin: 60, confidence: 0.8,
+  })),
   booted: false,
   aiMode: "checking",
   aiError: "",

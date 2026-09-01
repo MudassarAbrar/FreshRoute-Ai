@@ -1,6 +1,5 @@
-import { CROP_ALIASES } from "@/data/market"
+import { CROP_ALIASES } from "@/data/cropReference"
 import { supabase } from "@/lib/supabase"
-import { logAiUsageToFirestore } from "@/lib/firestore"
 import { withCircuitBreaker } from "@/lib/circuitBreaker"
 import type { Grade, VisionResult } from "@/types"
 import type { Lang } from "@/i18n"
@@ -31,14 +30,30 @@ type ProxyData = { ok?: boolean; error?: string; [k: string]: unknown }
 /**
  * Sanitize user-generated text before passing to LLM (Task 10 guardrail).
  * Strips instruction-like patterns from listing descriptions and chat messages.
+ * Enhanced with Urdu / Roman Urdu injection patterns (Phase 7).
  */
 export function sanitizeForLLM(text: string): string {
   if (!text) return text
-  // Strip prompt injection patterns
   const sanitized = text
+    // English injection patterns
     .replace(/ignore\s+(previous|all|above)\s+(instructions|prompts|rules)/gi, "")
     .replace(/you\s+are\s+now\s+/gi, "")
+    .replace(/forget\s+(everything|all|your)\s+(you|instructions|rules)/gi, "")
+    .replace(/new\s+instructions?\s*:/gi, "")
+    .replace(/pretend\s+(to\s+be|you\s+are)\s+/gi, "")
+    .replace(/override\s+(system|previous|all)\s+/gi, "")
+    // Urdu injection patterns
+    .replace(/\u067E\u0686\u06BE\u0644\u06CC\s+\u06C1\u062F\u0627\u06CC\u0627\u062A\s+\u06A9\u0648\s+\u0646\u0638\u0631\s*\u0627\u0646\u062F\u0627\u0632\s+\u06A9\u0631\u06CC\u06BA/g, "") // پچھلی ہدایات کو نظر انداز کریں
+    .replace(/\u0646\u0626\u06D2\s+\u0642\u0648\u0627\u0626\u062F/g, "") // نئے قواعد
+    // Roman Urdu injection
+    .replace(/ab\s+se\s+tum/gi, "")
+    .replace(/sab\s+bhool\s+jao/gi, "")
+    .replace(/naye\s+rules/gi, "")
+    // System instruction patterns
     .replace(/system\s*:/gi, "")
+    .replace(/\[INST\]/gi, "")
+    .replace(/\[\/INST\]/gi, "")
+    // HTML/XSS
     .replace(/<\/?script>/gi, "")
     .replace(/<\/?style>/gi, "")
     .replace(/javascript:/gi, "")
@@ -75,16 +90,8 @@ async function callProxy(body: Record<string, unknown>): Promise<ProxyData> {
       const { data, error } = await supabase.functions.invoke("smart-action", { body })
       const latencyMs = Date.now() - started
 
-      // Log to Firestore (non-blocking, fire-and-forget)
+      // AI usage logging is handled server-side by the Edge Function
       const proxyData = (data ?? { ok: false, error: "Empty response from AI proxy" }) as ProxyData
-      const status: "ok" | "error" = error || !proxyData.ok ? "error" : "ok"
-      void logAiUsageToFirestore({
-        action,
-        model: (proxyData.model as string) ?? "gemini-flash-latest",
-        status,
-        error: status === "error" ? (error?.message ?? proxyData.error ?? "unknown") : undefined,
-        latencyMs,
-      })
 
       if (error) {
         throw new Error(`Could not reach the AI proxy — ${error.message || "network error"}`)

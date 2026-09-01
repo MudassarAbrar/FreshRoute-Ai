@@ -1,12 +1,9 @@
 import {
-  BUYERS,
   CITY_DISTANCES_KM,
-  CROP_PRICES, // ESTIMATED — no live price feed
+  CROP_PRICES,
   CROP_VOLATILITY,
-  STORAGES,
-  TRANSPORTERS,
   WEATHER,
-} from "@/data/market"
+} from "@/data/cropReference"
 import type { Buyer, Deduction, Lot, Scenario, TransportOption, Transporter, StorageFacility } from "@/types"
 import { calculateSpoilage, type SpoilageResult } from "@/lib/spoilage"
 import { fetchBuyerProfiles, fetchTransporterProfiles, fetchStorageProviderProfiles, saveSpoilageAssessment, saveRecommendation } from "@/lib/db"
@@ -75,9 +72,9 @@ function scoreOf(net: number, maxNet: number, acceptance: number, riskPenalty: n
 
 export function buildScenarios(
   lot: Lot,
-  buyers: Buyer[] = BUYERS,
-  transporters: Transporter[] = TRANSPORTERS,
-  storages: StorageFacility[] = STORAGES,
+  buyers: Buyer[] = [],
+  transporters: Transporter[] = [],
+  storages: StorageFacility[] = [],
 ): Scenario[] {
   const prices = CROP_PRICES[lot.crop] ?? CROP_PRICES.Tomato
   const vol = CROP_VOLATILITY[lot.crop] ?? 0.8
@@ -310,7 +307,7 @@ export async function buildScenariosAsync(lot: Lot): Promise<Scenario[]> {
           verified: b.verified ?? false,
           responseTime: "1-2 hr",
         }))
-      : BUYERS
+      : []
 
     const transporters: Transporter[] = transporterProfiles.length > 0
       ? transporterProfiles.map((t) => ({
@@ -321,7 +318,7 @@ export async function buildScenariosAsync(lot: Lot): Promise<Scenario[]> {
           costPerKm: t.ratePerKm ?? 30,
           onTimePct: t.onTimePct ?? 75,
         }))
-      : TRANSPORTERS
+      : []
 
     const storages: StorageFacility[] = storageProfiles.length > 0
       ? storageProfiles.map((s) => ({
@@ -332,7 +329,7 @@ export async function buildScenariosAsync(lot: Lot): Promise<Scenario[]> {
           perKgPerDay: s.perKgPerDay ?? 3.5,
           verified: s.verified ?? false,
         }))
-      : STORAGES
+      : []
 
     const scenarios = buildScenarios(lot, buyers, transporters, storages)
 
@@ -356,7 +353,7 @@ export async function buildScenariosAsync(lot: Lot): Promise<Scenario[]> {
   }
 }
 
-export function transportOptions(lot: Lot, destCity: string, transporters: Transporter[] = TRANSPORTERS): TransportOption[] {
+export function transportOptions(lot: Lot, destCity: string, transporters: Transporter[] = []): TransportOption[] {
   const dist = CITY_DISTANCES_KM[lot.location]?.[destCity] ?? 350
   const hours = Math.round(2 + dist / 60)
   return transporters.map((t) => {

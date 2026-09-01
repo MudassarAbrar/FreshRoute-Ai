@@ -1,331 +1,245 @@
 /**
  * Authentication service for FreshRoute.
  *
- * Uses **Firebase Auth** as the primary identity provider:
+ * Uses **Supabase Auth** as the sole identity provider:
  *   - Email / Password sign-up & sign-in
- *   - Google Sign-in (popup)
+ *   - Google Sign-in (OAuth via Supabase)
  *   - Password reset emails
  *
- * On successful Firebase sign-in we also:
- *   1. Persist a lightweight profile to **Firestore** (user_profiles/{uid})
- *   2. Attempt to create / fetch a **Supabase** profile (for the data layer)
- *
- * Supabase remains the data layer for orders, reviews, etc.
- * Firestore stores the real-time user session profile.
+ * On sign-up, the `handle_new_user` DB trigger auto-creates a profile row
+ * in `public.profiles` (UUID, full_name from metadata, farmer role).
+ * Additional metadata (phone, city, address) is persisted via an update
+ * immediately after sign-up, so the profile is complete without relying
+ * on a separate auth system.
  */
-import {
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
-  signInWithPopup,
-  GoogleAuthProvider,
-  signOut as fbSignOut,
-  sendPasswordResetEmail,
-  confirmPasswordReset,
-  verifyPasswordResetCode,
-  updateProfile,
-  onAuthStateChanged,
-  type User,
-} from "firebase/auth"
-import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore"
-import { firebaseAuth } from "@/lib/firebase"
-import { firestoreDb } from "@/lib/firebase"
 import { supabase, backendConfigured } from "@/lib/supabase"
 import type { Profile } from "@/types"
-
-const googleProvider = new GoogleAuthProvider()
 
 // ──────────────────────────── Error mapping ────────────────────────────
 
 /**
- * Translates raw Firebase Auth error codes into human-readable messages
- * so users never see "auth/configuration-not-found" style codes.
+ * Translates Supabase auth error codes / messages into human-readable strings
+ * so users never see internal error codes.
  */
 export function friendlyAuthError(err: unknown): string {
-  const code = (err as { code?: string })?.code ?? ""
-  switch (code) {
-    case "auth/configuration-not-found":
-      return "Sign-in is not enabled yet. In the Firebase Console → Authentication → Sign-in method, enable Email/Password (and Google)."
-    case "auth/operation-not-allowed":
-      return "This sign-in method is disabled. Enable it in Firebase Console → Authentication → Sign-in method."
-    case "auth/email-already-in-use":
-      return "An account with this email already exists. Try signing in instead."
-    case "auth/invalid-email":
-      return "That email address doesn't look right. Please check it and try again."
-    case "auth/weak-password":
-      return "Password is too weak — use at least 6 characters."
-    case "auth/invalid-credential":
-    case "auth/wrong-password":
-    case "auth/user-not-found":
-      return "Incorrect email or password. Please try again."
-    case "auth/too-many-requests":
-      return "Too many attempts. Please wait a moment and try again."
-    case "auth/popup-closed-by-user":
-      return "The Google sign-in window was closed before finishing."
-    case "auth/popup-blocked":
-      return "Your browser blocked the sign-in popup. Allow popups for this site and try again."
-    case "auth/network-request-failed":
-      return "Network error — check your internet connection and try again."
-    case "auth/invalid-api-key":
-      return "The Firebase API key is invalid. Check the VITE_FIREBASE_* values in .env.local."
-    default: {
-      const msg = (err as { message?: string })?.message ?? ""
-      if (msg) return msg.replace(/^Firebase:\s*/, "").replace(/\s*\(auth\/.*\)\.?$/, "")
-      return "Something went wrong. Please try again."
-    }
+  const msg = ((err as { message?: string })?.message ?? String(err)).toLowerCase()
+  if (msg.includes("email not confirmed")) return "Please confirm your email address before signing in."
+  if (msg.includes("invalid login credentials")) return "Incorrect email or password. Please try again."
+  if (msg.includes("user already registered")) return "An account with this email already exists. Try signing in instead."
+  if (msg.includes("password should be")) return "Password is too weak — use at least 6 characters."
+  if (msg.includes("too many requests")) return "Too many attempts. Please wait a moment and try again."
+  if (msg.includes("email is invalid") || msg.includes("invalid email")) return "That email address doesn't look right. Please check it and try again."
+  if (msg.includes("network") || msg.includes("fetch")) return "Network error — check your internet connection and try again."
+  if (msg.includes("session not found") || msg.includes("token has expired")) return "Your session has expired. Please sign in again."
+  if (msg.includes("otp expired")) return "The password reset link has expired. Please request a new one."
+  const original = (err as { message?: string })?.message
+  if (original) return original
+  return "Something went wrong. Please try again."
+}
+
+// ──────────────────────────── Helpers ────────────────────────────
+
+function rethrowFriendly(err: unknown): never {
+  throw new Error(friendlyAuthError(err))
+}
+
+/** Update the current user's profile with optional metadata fields. */
+async function syncProfileFields(updates: { phone?: string; city?: string; address?: string; full_name?: string }) {
+  if (!backendConfigured) return
+  try {
+    await supabase.from("profiles").update(updates).eq("id", (await supabase.auth.getUser()).data.user?.id)
+  } catch (e) {
+    console.warn("[Auth] Profile sync failed (non-blocking)", e)
   }
 }
 
-// ──────────────────────────── Firebase Auth ────────────────────────────
+// ──────────────────────────── Sign up ────────────────────────────
 
 /**
- * Re-throws an error with a human-readable message while keeping the
- * original `code` attached (pages check it for silent cases like
- * popup-closed-by-user).
- */
-function rethrowFriendly(err: unknown): never {
-  throw Object.assign(new Error(friendlyAuthError(err)), {
-    code: (err as { code?: string })?.code ?? "",
-  })
-}
-
-/**
- * Sign up with email + password via Firebase Auth.
- * Also creates a Firestore user profile and a Supabase profile.
+ * Sign up with email + password via Supabase Auth.
+ * The DB trigger `handle_new_user` auto-creates a profile row and assigns
+ * the 'farmer' role. We then update the profile with phone/city/address.
  */
 export async function signUp(
   email: string,
   password: string,
   meta: { fullName: string; phone: string; city: string; address: string },
 ) {
-  // 1. Create Firebase Auth account
-  let cred
+  if (!backendConfigured) throw new Error("Backend not configured")
   try {
-    cred = await createUserWithEmailAndPassword(firebaseAuth, email, password)
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          fullName: meta.fullName,
+          phone: meta.phone,
+          city: meta.city,
+          address: meta.address,
+        },
+        emailRedirectTo: `${window.location.origin}/login`,
+      },
+    })
+    if (error) rethrowFriendly(error)
+
+    // Best-effort: persist phone/city/address to profiles row
+    // (the trigger already sets full_name and email; this adds the rest)
+    if (data.user) {
+      await supabase
+        .from("profiles")
+        .update({
+          phone: meta.phone,
+          city: meta.city,
+          address: meta.address,
+        })
+        .eq("id", data.user.id)
+    }
+
+    // If email confirmation is required, session will be null — the caller
+    // should detect this and show a "check your email" message.
+    return { user: data.user, session: data.session }
   } catch (err) {
     rethrowFriendly(err)
   }
-  if (meta.fullName) {
-    await updateProfile(cred.user, { displayName: meta.fullName })
-  }
-
-  // 2. Write profile to Firestore
-  await setDoc(doc(firestoreDb, "user_profiles", cred.user.uid), {
-    fullName: meta.fullName,
-    email,
-    phone: meta.phone,
-    city: meta.city,
-    address: meta.address,
-    role: "farmer",
-    createdAt: serverTimestamp(),
-  })
-
-  // 3. Attempt to create Supabase profile (best-effort for data layer)
-  if (backendConfigured) {
-    try {
-      await supabase.from("profiles").insert({
-        id: cred.user.uid,
-        full_name: meta.fullName,
-        email,
-        phone: meta.phone,
-        city: meta.city,
-        address: meta.address,
-      })
-    } catch (e) {
-      console.warn("[Auth] Supabase profile creation failed (non-blocking)", e)
-    }
-  }
-
-  return { user: cred.user, session: null }
 }
 
+// ──────────────────────────── Sign in ────────────────────────────
+
 /**
- * Sign in with email + password via Firebase Auth.
+ * Sign in with email + password via Supabase Auth.
+ * The returned session is stored automatically by the Supabase client.
  */
 export async function signIn(email: string, password: string) {
-  let cred
+  if (!backendConfigured) throw new Error("Backend not configured")
   try {
-    cred = await signInWithEmailAndPassword(firebaseAuth, email, password)
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+    if (error) rethrowFriendly(error)
+    return { user: data.user, session: data.session }
   } catch (err) {
     rethrowFriendly(err)
   }
-
-  // Ensure Supabase profile exists (best-effort)
-  if (backendConfigured) {
-    try {
-      const { data: existing } = await supabase
-        .from("profiles")
-        .select("id")
-        .eq("id", cred.user.uid)
-        .maybeSingle()
-      if (!existing) {
-        await supabase.from("profiles").insert({
-          id: cred.user.uid,
-          full_name: cred.user.displayName ?? "",
-          email: cred.user.email ?? email,
-        })
-      }
-    } catch (e) {
-      console.warn("[Auth] Supabase profile sync failed (non-blocking)", e)
-    }
-  }
-
-  return { user: cred.user, session: null }
 }
 
 /**
- * Sign in with Google (popup) via Firebase Auth.
- * Creates the account if it doesn't exist yet.
+ * Sign in with Google via Supabase OAuth (browser redirect).
+ * The user is redirected to Google's consent screen; on return,
+ * `onAuthChange` fires and the Supabase session is established.
  */
 export async function signInWithGoogle() {
-  let user
+  if (!backendConfigured) throw new Error("Backend not configured")
   try {
-    const result = await signInWithPopup(firebaseAuth, googleProvider)
-    user = result.user
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: `${window.location.origin}/dashboard`,
+      },
+    })
+    if (error) rethrowFriendly(error)
+    // Note: the browser will redirect to Google. No return value here —
+    // onAuthChange fires when the user comes back after consent.
+    return { user: null, session: null }
   } catch (err) {
     rethrowFriendly(err)
   }
-
-  // Write Firestore profile if first sign-in
-  const profileRef = doc(firestoreDb, "user_profiles", user.uid)
-  const snap = await getDoc(profileRef)
-  if (!snap.exists()) {
-    await setDoc(profileRef, {
-      fullName: user.displayName ?? "",
-      email: user.email ?? "",
-      phone: user.phoneNumber ?? "",
-      city: "",
-      address: "",
-      role: "farmer",
-      createdAt: serverTimestamp(),
-    })
-  }
-
-  // Best-effort Supabase profile
-  if (backendConfigured) {
-    try {
-      const { data: existing } = await supabase
-        .from("profiles")
-        .select("id")
-        .eq("id", user.uid)
-        .maybeSingle()
-      if (!existing) {
-        await supabase.from("profiles").insert({
-          id: user.uid,
-          full_name: user.displayName ?? "",
-          email: user.email ?? "",
-        })
-      }
-    } catch (e) {
-      console.warn("[Auth] Supabase Google profile sync failed (non-blocking)", e)
-    }
-  }
-
-  return { user, session: null }
 }
 
-/**
- * Sign out of Firebase Auth.
- */
+// ──────────────────────────── Sign out ────────────────────────────
+
 export async function signOut() {
-  await fbSignOut(firebaseAuth)
+  if (!backendConfigured) return
+  const { error } = await supabase.auth.signOut()
+  if (error) rethrowFriendly(error)
 }
 
+// ──────────────────────────── Password reset ────────────────────────────
+
 /**
- * Send a password reset email via Firebase Auth.
+ * Send a password reset email via Supabase Auth.
+ * The reset link points to `/reset-password` on the current origin.
  */
 export async function resetPassword(email: string) {
+  if (!backendConfigured) throw new Error("Backend not configured")
   try {
-    await sendPasswordResetEmail(firebaseAuth, email, {
-      url: `${window.location.origin}/reset-password`,
-      handleCodeInApp: false,
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/reset-password`,
     })
+    if (error) rethrowFriendly(error)
   } catch (err) {
     rethrowFriendly(err)
   }
 }
 
 /**
- * Update password via Firebase Auth reset code.
- * The oobCode is extracted from the URL query param (set by Firebase reset email).
+ * Update the current user's password.
+ * Supabase detects the reset-password link via the URL fragment
+ * (configured in supabase.ts with `detectSessionInUrl: true`).
+ * After the link is processed, the client has a valid session and
+ * `updateUser({ password })` works.
  */
 export async function updatePassword(newPassword: string) {
-  const params = new URLSearchParams(window.location.search)
-  const oobCode = params.get("oobCode")
-  if (!oobCode) {
-    throw new Error("Missing reset code. Please request a new password reset email.")
+  if (!backendConfigured) throw new Error("Backend not configured")
+  try {
+    const { error } = await supabase.auth.updateUser({ password: newPassword })
+    if (error) rethrowFriendly(error)
+  } catch (err) {
+    rethrowFriendly(err)
   }
-  // Verify the code is valid (will throw if expired/invalid)
-  await verifyPasswordResetCode(firebaseAuth, oobCode)
-  // Confirm the password reset
-  await confirmPasswordReset(firebaseAuth, oobCode, newPassword)
 }
 
+// ──────────────────────────── Session helpers ────────────────────────────
+
 /**
- * Always returns null — Firebase manages sessions internally.
+ * Returns the current Supabase session, or null if the user is signed out.
+ * Used by ProtectedRoute to gate protected pages.
  */
 export async function getSession() {
-  return null
+  if (!backendConfigured) return null
+  const { data, error } = await supabase.auth.getSession()
+  if (error) return null
+  return data.session
 }
 
 /**
- * Fetch user profile from Firestore (primary) or Supabase (fallback).
+ * Fetch the current user's profile from the `profiles` table.
+ * Returns null if not found.
  */
 export async function fetchProfile(userId: string): Promise<Profile | null> {
-  // Try Firestore first
+  if (!backendConfigured) return null
   try {
-    const snap = await getDoc(doc(firestoreDb, "user_profiles", userId))
-    if (snap.exists()) {
-      const d = snap.data()
-      return {
-        id: userId,
-        fullName: d.fullName ?? "",
-        email: d.email ?? "",
-        phone: d.phone ?? "",
-        city: d.city ?? "",
-        address: d.address ?? "",
-        role: d.role ?? "farmer",
-        customerCode: d.customerCode ?? "",
-        createdAt: d.createdAt?.toDate?.()?.toISOString() ?? new Date().toISOString(),
-      }
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", userId)
+      .maybeSingle()
+    if (error || !data) return null
+    return {
+      id: data.id,
+      fullName: data.full_name,
+      email: data.email,
+      phone: data.phone,
+      city: data.city,
+      address: data.address,
+      role: data.role,
+      customerCode: data.customer_code,
+      createdAt: data.created_at,
     }
   } catch (e) {
-    console.warn("[Auth] Firestore profile fetch failed", e)
+    console.warn("[Auth] Profile fetch failed", e)
+    return null
   }
-
-  // Fallback: Supabase
-  if (backendConfigured) {
-    try {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", userId)
-        .single()
-      if (!error && data) {
-        return {
-          id: data.id,
-          fullName: data.full_name,
-          email: data.email,
-          phone: data.phone,
-          city: data.city,
-          address: data.address,
-          role: data.role,
-          customerCode: data.customer_code,
-          createdAt: data.created_at,
-        }
-      }
-    } catch (e) {
-      console.warn("[Auth] Supabase profile fetch failed", e)
-    }
-  }
-
-  return null
 }
 
 /**
- * Subscribe to Firebase Auth state changes.
- * Returns an object with an unsubscribe method (matches Supabase's API shape).
+ * Subscribe to Supabase auth state changes.
+ * Returns an object with `data.subscription.unsubscribe()` to match
+ * the shape expected by ProtectedRoute.
  */
-export function onAuthChange(cb: (user: User | null) => void) {
-  const unsub = onAuthStateChanged(firebaseAuth, cb)
-  return { data: { subscription: { unsubscribe: unsub } } }
+export function onAuthChange(cb: (user: import("@supabase/supabase-js").User | null) => void) {
+  const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+    cb(session?.user ?? null)
+  })
+  return data // { subscription: { unsubscribe() } }
 }
+
+// Unused — kept as no-op for backwards compat (previously used by Firebase auth)
+void syncProfileFields

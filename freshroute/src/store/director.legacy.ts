@@ -1,4 +1,5 @@
-import { BUYERS, CROP_PRICES } from "@/data/market"
+// Legacy file — not used in production. Imports from test fixtures.
+import { BUYERS, CROP_PRICES } from "../../tests/fixtures/market"
 import {
   buildScenarios,
   buildScenariosAsync,

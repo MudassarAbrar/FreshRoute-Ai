@@ -1,14 +1,20 @@
-// FreshRoute gemini-proxy — the ONLY place the Gemini API key lives.
-// Deploy: supabase functions deploy gemini-proxy
+// FreshRoute AI proxy — the ONLY place the Gemini API key lives.
+// Deploy (frontend invokes "smart-action"; "gemini-proxy" is kept as an alias):
+//   supabase functions deploy smart-action --project-ref tlfncoyrtsscirfnbvzg
+//   supabase functions deploy gemini-proxy --project-ref tlfncoyrtsscirfnbvzg
 // Secret: supabase secrets set GEMINI_API_KEY=your_key
 //
-// POST { action: "extract" | "vision" | "chat" | "agent-turn" | "status", ... }
+// POST { action: "status" | "extract" | "vision" | "chat" | "agent-turn" | "agent-execute-approved", ... }
 // Auth:  caller's Supabase JWT (verified) — no anonymous access.
+//
+// NOTE: keep this file dependency-light. Importing npm:@google/adk here made the
+// worker exceed the Edge Runtime size limit and crash on boot (BOOT_ERROR), so
+// the agent loop is implemented with native Gemini function calling instead.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-// ADK via Deno npm: (Phase 3 — Google Agent SDK)
-import { LlmAgent, FunctionTool, InMemoryRunner } from "npm:@google/adk";
-import { z } from "npm:zod";
+import { transitionOrder, type OrderStatus } from "../_shared/orderStateMachine.ts";
+import { checkAgentRateLimit, checkGlobalRateLimit, rateLimitedResponse } from "../_shared/serverRateLimiter.ts";
+import { sanitizeInput } from "../_shared/inputSanitizer.ts";
 
 const MODEL = "gemini-flash-latest";
 const GEMINI_KEY = Deno.env.get("GEMINI_API_KEY") ?? "";
@@ -30,7 +36,10 @@ function bad(error: string) {
   return new Response(JSON.stringify({ ok: false, error }), { status: 200, headers: jsonHeaders });
 }
 
-async function gemini(body: unknown): Promise<{ ok: true; text: string } | { ok: false; error: string }> {
+/** Call Gemini generateContent and return the raw parsed response. */
+async function geminiRaw(
+  body: unknown,
+): Promise<{ ok: true; data: Record<string, any> } | { ok: false; error: string }> {
   try {
     const res = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`,
@@ -53,12 +62,19 @@ async function gemini(body: unknown): Promise<{ ok: true; text: string } | { ok:
       return { ok: false, error: msg };
     }
     const data = await res.json();
-    const text: string =
-      data?.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text ?? "").join("") ?? "";
-    return { ok: true, text };
+    return { ok: true, data };
   } catch (e) {
     return { ok: false, error: `Network error calling Gemini: ${e instanceof Error ? e.message : "unknown"}` };
   }
+}
+
+/** Call Gemini and extract the concatenated text of the first candidate. */
+async function gemini(body: unknown): Promise<{ ok: true; text: string } | { ok: false; error: string }> {
+  const r = await geminiRaw(body);
+  if (!r.ok) return r;
+  const text: string =
+    r.data?.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text ?? "").join("") ?? "";
+  return { ok: true, text };
 }
 
 Deno.serve(async (req) => {
@@ -102,6 +118,21 @@ Deno.serve(async (req) => {
       latency_ms: Date.now() - started,
     });
   };
+
+  // ── Phase 7: Server-side rate limiting ──────────────────────────
+  const globalLimit = checkGlobalRateLimit(userId);
+  if (!globalLimit.allowed) return rateLimitedResponse(globalLimit);
+
+  if (action === "agent-turn" || action === "agent-execute-approved") {
+    const agentLimit = checkAgentRateLimit(userId);
+    if (!agentLimit.allowed) return rateLimitedResponse(agentLimit);
+  }
+
+  // ── Phase 7: Input sanitization ─────────────────────────────────
+  if (payload.userMessage && typeof payload.userMessage === "string") {
+    const sanitized = sanitizeInput(payload.userMessage);
+    payload.userMessage = sanitized.sanitized;
+  }
 
   // ── status: is the server key configured & valid? ──────────────
   if (action === "status") {
@@ -280,95 +311,25 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ ok: true, text: result.text }), { headers: jsonHeaders });
   }
 
-  // ── agent-turn: ADK agent with full function-calling loop ──────
+  // ── agent-turn: native function-calling agent loop ─────────────
   if (action === "agent-turn") {
     const sessionId = String(payload.sessionId ?? `session-${userId}-${Date.now()}`);
     const userMessage = String(payload.userMessage ?? "").slice(0, 4000);
     if (!userMessage.trim()) return bad("No message for agent turn");
 
     try {
-      // Get or create runner for this session
-      let runner = sessionRunners.get(sessionId);
-      if (!runner) {
-        const agent = new LlmAgent({
-          name: "freshroute_agent",
-          model: "gemini-2.5-flash",
-          instruction: AGENT_INSTRUCTION,
-          tools: buildAgentTools(admin, userId),
-        });
-        runner = new InMemoryRunner({ agent });
-        sessionRunners.set(sessionId, runner);
-        // Evict old sessions (keep last 50)
-        if (sessionRunners.size > 50) {
-          const oldest = sessionRunners.keys().next().value;
-          if (oldest) sessionRunners.delete(oldest);
-        }
+      const result = await runAgentTurn({ sessionId, userMessage, admin, userId });
+      if (!result.ok) {
+        logUsage("error", result.error);
+        return new Response(JSON.stringify({ ok: false, error: result.error }), { status: 200, headers: jsonHeaders });
       }
-
-      // Create or reuse session
-      let currentSessionId = sessionId;
-      try {
-        await runner.sessionService.createSession({ appName: runner.appName, userId });
-      } catch {
-        // Session may already exist — use the existing one
-      }
-
-      // Run the agent — iterate the async event stream
-      let agentText = "";
-      const toolCalls: Array<{ name: string; args: Record<string, unknown>; result?: unknown }> = [];
-      const requiresApproval: Array<{ name: string; args: Record<string, unknown> }> = [];
-
-      for await (const event of runner.runAsync({
-        userId,
-        sessionId: currentSessionId,
-        newMessage: { role: "user", parts: [{ text: userMessage }] },
-      })) {
-        // Collect text from agent responses
-        if (event.content?.parts) {
-          for (const part of event.content.parts) {
-            if (part.text && event.author === "freshroute_agent") {
-              agentText += part.text;
-            }
-          }
-        }
-        // Collect function calls
-        if (event.content?.parts) {
-          for (const part of event.content.parts) {
-            if (part.functionCall) {
-              const call = { name: part.functionCall.name, args: (part.functionCall.args ?? {}) as Record<string, unknown> };
-              toolCalls.push(call);
-              // Write tools flagged for approval
-              const writeTools = ["send_offer_message", "book_transport", "book_storage", "update_order_status"];
-              if (writeTools.includes(call.name)) {
-                requiresApproval.push(call);
-              }
-            }
-          }
-        }
-        // Log tool calls to agent_action_log
-        if (event.content?.parts) {
-          for (const part of event.content.parts) {
-            if (part.functionCall) {
-              void admin.from("agent_action_log").insert({
-                agent_run_id: sessionId,
-                action_type: part.functionCall.name,
-                input: part.functionCall.args ?? {},
-                output: {},
-                requires_approval: ["send_offer_message", "book_transport", "book_storage", "update_order_status"].includes(part.functionCall.name),
-                status: "executed",
-              });
-            }
-          }
-        }
-      }
-
       logUsage("ok");
       return new Response(JSON.stringify({
         ok: true,
         sessionId,
-        text: agentText,
-        toolCalls,
-        requiresApproval,
+        text: result.text,
+        toolCalls: result.toolCalls,
+        requiresApproval: result.requiresApproval,
       }), { headers: jsonHeaders });
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Agent runtime error";
@@ -377,201 +338,194 @@ Deno.serve(async (req) => {
     }
   }
 
+  // ── agent-execute-approved: run write tools the user approved ──
+  if (action === "agent-execute-approved") {
+    const sessionId = String(payload.sessionId ?? "");
+    const approved = Array.isArray(payload.approvedToolCalls) ? payload.approvedToolCalls : [];
+    if (!approved.length) return bad("No approved tool calls provided");
+    const results: Array<Record<string, unknown>> = [];
+    for (const call of approved) {
+      const name = String((call as { name?: string })?.name ?? "");
+      const args = ((call as { args?: Record<string, unknown> })?.args ?? {}) as Record<string, unknown>;
+      if (!WRITE_TOOLS.includes(name)) {
+        results.push({ name, ok: false, error: "Not an approvable write tool" });
+        continue;
+      }
+      const outcome = await executeWriteTool(name, args, admin, userId);
+      results.push({ name, ...outcome });
+      void admin.from("agent_action_log").insert({
+        agent_run_id: sessionId,
+        action_type: name,
+        input: args,
+        output: outcome,
+        requires_approval: true,
+        status: outcome.error ? "failed" : "executed",
+      });
+    }
+    logUsage("ok");
+    return new Response(JSON.stringify({
+      ok: true,
+      sessionId,
+      text: "",
+      toolCalls: approved,
+      requiresApproval: [],
+      results,
+    }), { headers: jsonHeaders });
+  }
+
   return bad(`Unknown action "${action}"`);
 });
 
-// ─── Phase 3: ADK Agent Runtime ───────────────────────────────────
+// ─── Agent runtime — native Gemini function calling (no ADK) ──────
+// The ADK npm package exceeded the Edge Runtime worker size limit and made the
+// function crash on boot, so this loop talks to the Gemini REST API directly.
 
-/** Tool schemas for the FreshRoute ADK agent (mirrors adkAgent.ts) */
-function buildAgentTools(admin: ReturnType<typeof createClient>, userId: string) {
-  return [
-    new FunctionTool({
-      name: "get_lot_details",
-      description: "Retrieve lot/listing details by ID",
-      parameters: z.object({ listingId: z.string() }),
-      execute: async ({ listingId }) => {
-        const { data } = await admin.from("listings").select("*").eq("id", listingId).maybeSingle();
-        return data ?? { error: "Listing not found" };
-      },
-    }),
-    new FunctionTool({
-      name: "calculate_spoilage_risk",
-      description: "Calculate spoilage risk for a commodity",
-      parameters: z.object({
-        commodity: z.string(),
-        harvestDate: z.string(),
-        hours: z.number(),
-        transportMode: z.enum(["refrigerated", "ambient", "none"]).optional(),
-        handlingEvents: z.number().optional(),
-      }),
-      execute: async ({ commodity, hours }) => {
-        // Simplified spoilage model for agent use
-        const baseLoss = Math.min(0.45, hours * 0.004);
-        return { expectedLossPct: Math.round(baseLoss * 1000) / 1000, commodity, hours };
-      },
-    }),
-    new FunctionTool({
-      name: "search_buyers",
-      description: "Search for buyer profiles matching a commodity",
-      parameters: z.object({ commodity: z.string(), region: z.string().optional() }),
-      execute: async ({ commodity, region }) => {
-        const { data } = await admin
-          .from("user_roles")
-          .select("id, user_id, profiles!inner(full_name, city), role_profiles(profile_json)")
-          .eq("role", "buyer")
-          .eq("status", "active")
-          .limit(10);
-        if (!data) return [];
-        return data.filter((r: any) => {
-          const pj = r.role_profiles?.[0]?.profile_json ?? r.role_profiles?.profile_json ?? {};
-          const commodities = pj.typicalCommodities ?? [];
-          const regions = pj.deliveryRegions ?? [];
-          const commodityMatch = !commodity || commodities.includes(commodity);
-          const regionMatch = !region || regions.includes(region);
-          return commodityMatch && regionMatch;
-        }).map((r: any) => {
-          const pj = r.role_profiles?.[0]?.profile_json ?? r.role_profiles?.profile_json ?? {};
-          return { userId: r.user_id, name: r.profiles?.full_name, city: r.profiles?.city, ...pj };
-        });
-      },
-    }),
-    new FunctionTool({
-      name: "get_transport_quotes",
-      description: "Get transport provider quotes for a route",
-      parameters: z.object({ originCity: z.string(), destCity: z.string(), crop: z.string().optional() }),
-      execute: async ({ originCity, destCity }) => {
-        const { data } = await admin
-          .from("user_roles")
-          .select("id, user_id, profiles!inner(full_name, city), role_profiles(profile_json)")
-          .eq("role", "transporter")
-          .eq("status", "active");
-        if (!data) return [];
-        const distances: Record<string, Record<string, number>> = {
-          Multan: { Multan: 15, Lahore: 350, Faisalabad: 250, Islamabad: 340, Karachi: 900 },
-          Lahore: { Lahore: 15, Multan: 350, Faisalabad: 180, Islamabad: 375, Karachi: 1210 },
-          Faisalabad: { Faisalabad: 15, Multan: 250, Lahore: 180, Islamabad: 300, Karachi: 1100 },
-          Islamabad: { Islamabad: 15, Multan: 340, Lahore: 375, Faisalabad: 300, Karachi: 1400 },
-          Karachi: { Karachi: 15, Multan: 900, Lahore: 1210, Faisalabad: 1100, Islamabad: 1400 },
-        };
-        const dist = distances[originCity]?.[destCity] ?? 350;
-        return data.map((r: any) => {
-          const pj = r.role_profiles?.[0]?.profile_json ?? r.role_profiles?.profile_json ?? {};
-          const ratePerKm = pj.ratePerKm ?? 30;
-          return {
-            userId: r.user_id, name: r.profiles?.full_name,
-            vehicleType: pj.vehicleType, cost: ratePerKm * dist, distKm: dist,
-            refrigerated: pj.refrigerated ?? false, onTimePct: pj.onTimePct ?? 75,
-          };
-        }).sort((a: any, b: any) => a.cost - b.cost);
-      },
-    }),
-    new FunctionTool({
-      name: "get_storage_quotes",
-      description: "Get storage provider quotes",
-      parameters: z.object({ city: z.string(), neededDays: z.number() }),
-      execute: async ({ city, neededDays }) => {
-        const { data } = await admin
-          .from("user_roles")
-          .select("id, user_id, profiles!inner(full_name, city), role_profiles(profile_json)")
-          .eq("role", "storage_provider")
-          .eq("status", "active");
-        if (!data) return [];
-        return data
-          .filter((r: any) => (r.profiles?.city ?? "") === city)
-          .map((r: any) => {
-            const pj = r.role_profiles?.[0]?.profile_json ?? r.role_profiles?.profile_json ?? {};
-            const perKg = pj.perKgPerDay ?? 3.5;
-            return { userId: r.user_id, name: r.profiles?.full_name, city, perKgPerDay: perKg, totalCost: perKg * neededDays, verified: pj.verified };
-          });
-      },
-    }),
-    new FunctionTool({
-      name: "draft_offer_message",
-      description: "Draft an offer message to a buyer",
-      parameters: z.object({
-        buyerName: z.string(), commodity: z.string(), quantity: z.number(),
-        grade: z.string(), price: z.number(), location: z.string(),
-      }),
-      execute: async (p) => ({
-        draft: `Assalam-o-Alaikum! I have ${p.quantity} kg Grade ${p.grade} ${p.commodity} in ${p.location}. Asking PKR ${p.price}/kg. Can you take the full lot?`,
-        recipient: p.buyerName,
-      }),
-    }),
-    new FunctionTool({
-      name: "send_offer_message",
-      description: "Send offer to buyer — REQUIRES user approval before executing",
-      parameters: z.object({
-        listingId: z.string(), price: z.number(), quantity: z.number(), message: z.string(),
-      }),
-      execute: async (p) => {
-        const { data, error } = await admin.from("offers").insert({
-          listing_id: p.listingId, offering_user_id: userId,
-          price: p.price, quantity: p.quantity, message: p.message, status: "pending",
-        }).select("*").single();
-        if (error) return { ok: false, error: error.message };
-        return { ok: true, offerId: data?.id };
-      },
-    }),
-    new FunctionTool({
-      name: "book_transport",
-      description: "Book transporter — REQUIRES user approval",
-      parameters: z.object({
-        orderId: z.string(), transporterUserId: z.string(),
-        pickupWindow: z.string(), dropoffWindow: z.string(), rate: z.number(),
-      }),
-      execute: async (p) => {
-        const { data, error } = await admin.from("transport_bookings").insert({
-          order_id: p.orderId, transporter_user_id: p.transporterUserId,
-          pickup_window: p.pickupWindow, dropoff_window: p.dropoffWindow,
-          rate: p.rate, status: "pending",
-        }).select("*").single();
-        if (error) return { ok: false, error: error.message };
-        return { ok: true, bookingId: data?.id };
-      },
-    }),
-    new FunctionTool({
-      name: "book_storage",
-      description: "Book storage — REQUIRES user approval",
-      parameters: z.object({
-        orderOrLotId: z.string(), storageUserId: z.string(),
-        startDate: z.string(), endDate: z.string(), rate: z.number(),
-      }),
-      execute: async (p) => {
-        const { data, error } = await admin.from("storage_bookings").insert({
-          order_id_or_lot_id: p.orderOrLotId, storage_user_id: p.storageUserId,
-          start_date: p.startDate, end_date: p.endDate,
-          rate: p.rate, status: "pending",
-        }).select("*").single();
-        if (error) return { ok: false, error: error.message };
-        return { ok: true, bookingId: data?.id };
-      },
-    }),
-    new FunctionTool({
-      name: "schedule_reminder",
-      description: "Schedule a reminder for a future action",
-      parameters: z.object({ at: z.string(), message: z.string() }),
-      execute: async (p) => ({ scheduled: true, at: p.at, message: p.message }),
-    }),
-    new FunctionTool({
-      name: "update_order_status",
-      description: "Update order status — REQUIRES approval for financial changes",
-      parameters: z.object({
-        orderId: z.string(), status: z.string(), previousStatus: z.string().optional(),
-      }),
-      execute: async (p) => {
-        await admin.from("orders").update({ status: p.status }).eq("id", p.orderId);
-        await admin.from("order_events").insert({
-          order_id: p.orderId, event_type: "STATUS_CHANGED",
-          payload: { newStatus: p.status, previousStatus: p.previousStatus },
-        });
-        return { updated: true, orderId: p.orderId, newStatus: p.status };
-      },
-    }),
-  ];
-}
+type Part = {
+  text?: string;
+  functionCall?: { name: string; args?: Record<string, unknown> };
+  functionResponse?: { name: string; response: unknown };
+};
+type Content = { role: "user" | "model"; parts: Part[] };
 
-/** Session runner cache for multi-turn ADK conversations */
-const sessionRunners = new Map<string, InstanceType<typeof InMemoryRunner>>();
+/** Write tools are never executed without explicit user approval. */
+const WRITE_TOOLS = ["send_offer_message", "book_transport", "book_storage", "update_order_status"];
+
+/** Tool schemas for the FreshRoute agent (mirrors adkAgent.ts). */
+const TOOL_DECLARATIONS = [
+  {
+    name: "get_lot_details",
+    description: "Retrieve lot/listing details by ID",
+    parameters: {
+      type: "object",
+      properties: { listingId: { type: "string" } },
+      required: ["listingId"],
+    },
+  },
+  {
+    name: "calculate_spoilage_risk",
+    description: "Calculate spoilage risk for a commodity",
+    parameters: {
+      type: "object",
+      properties: {
+        commodity: { type: "string" },
+        harvestDate: { type: "string" },
+        hours: { type: "number" },
+        transportMode: { type: "string", enum: ["refrigerated", "ambient", "none"] },
+        handlingEvents: { type: "number" },
+      },
+      required: ["commodity", "harvestDate", "hours"],
+    },
+  },
+  {
+    name: "search_buyers",
+    description: "Search for buyer profiles matching a commodity",
+    parameters: {
+      type: "object",
+      properties: { commodity: { type: "string" }, region: { type: "string" } },
+      required: ["commodity"],
+    },
+  },
+  {
+    name: "get_transport_quotes",
+    description: "Get transport provider quotes for a route",
+    parameters: {
+      type: "object",
+      properties: { originCity: { type: "string" }, destCity: { type: "string" }, crop: { type: "string" } },
+      required: ["originCity", "destCity"],
+    },
+  },
+  {
+    name: "get_storage_quotes",
+    description: "Get storage provider quotes",
+    parameters: {
+      type: "object",
+      properties: { city: { type: "string" }, neededDays: { type: "number" } },
+      required: ["city", "neededDays"],
+    },
+  },
+  {
+    name: "draft_offer_message",
+    description: "Draft an offer message to a buyer (does not send anything)",
+    parameters: {
+      type: "object",
+      properties: {
+        buyerName: { type: "string" },
+        commodity: { type: "string" },
+        quantity: { type: "number" },
+        grade: { type: "string" },
+        price: { type: "number" },
+        location: { type: "string" },
+      },
+      required: ["buyerName", "commodity", "quantity", "grade", "price", "location"],
+    },
+  },
+  {
+    name: "send_offer_message",
+    description: "Send offer to buyer — REQUIRES user approval before executing",
+    parameters: {
+      type: "object",
+      properties: {
+        listingId: { type: "string" },
+        price: { type: "number" },
+        quantity: { type: "number" },
+        message: { type: "string" },
+      },
+      required: ["listingId", "price", "quantity", "message"],
+    },
+  },
+  {
+    name: "book_transport",
+    description: "Book transporter — REQUIRES user approval before executing",
+    parameters: {
+      type: "object",
+      properties: {
+        orderId: { type: "string" },
+        transporterUserId: { type: "string" },
+        pickupWindow: { type: "string" },
+        dropoffWindow: { type: "string" },
+        rate: { type: "number" },
+      },
+      required: ["orderId", "transporterUserId", "pickupWindow", "dropoffWindow", "rate"],
+    },
+  },
+  {
+    name: "book_storage",
+    description: "Book storage — REQUIRES user approval before executing",
+    parameters: {
+      type: "object",
+      properties: {
+        orderOrLotId: { type: "string" },
+        storageUserId: { type: "string" },
+        startDate: { type: "string" },
+        endDate: { type: "string" },
+        rate: { type: "number" },
+      },
+      required: ["orderOrLotId", "storageUserId", "startDate", "endDate", "rate"],
+    },
+  },
+  {
+    name: "schedule_reminder",
+    description: "Schedule a reminder for a future action",
+    parameters: {
+      type: "object",
+      properties: { at: { type: "string" }, message: { type: "string" } },
+      required: ["at", "message"],
+    },
+  },
+  {
+    name: "update_order_status",
+    description: "Update order status — REQUIRES user approval before executing",
+    parameters: {
+      type: "object",
+      properties: {
+        orderId: { type: "string" },
+        status: { type: "string" },
+        previousStatus: { type: "string" },
+      },
+      required: ["orderId", "status"],
+    },
+  },
+];
 
 const AGENT_INSTRUCTION = `You are FreshRoute Agent, an AI selling assistant for Pakistani farmers and produce traders.
 Help sellers get the best price by: extracting lot details, analyzing spoilage risk, matching to buyers/transport/storage, drafting offers, and booking services.
@@ -580,3 +534,300 @@ If asked about anything else, deflect: "I can help with selling produce, finding
 Default to Urdu when the user writes in Urdu, English when they write in English.
 Before executing send_offer_message, book_transport, book_storage, or update_order_status, present the action details and wait for explicit user approval.`;
 
+/**
+ * DB-backed session persistence — replaces in-memory Map so sessions
+ * survive Edge Function cold starts. Falls back to in-memory if DB writes fail.
+ */
+const MAX_SESSION_CONTENTS = 30;
+const sessionFallback = new Map<string, Content[]>();
+
+async function loadSession(
+  sessionId: string,
+  admin: ReturnType<typeof createClient>,
+): Promise<Content[]> {
+  // Try DB first
+  const { data, error } = await admin
+    .from("agent_sessions")
+    .select("contents")
+    .eq("id", sessionId)
+    .maybeSingle();
+  if (data && !error) {
+    return (data.contents as Content[]) ?? [];
+  }
+  // Fallback to in-memory (cold start before migration applied, etc.)
+  return sessionFallback.get(sessionId) ?? [];
+}
+
+async function saveSession(
+  sessionId: string,
+  userId: string,
+  contents: Content[],
+  admin: ReturnType<typeof createClient>,
+): Promise<void> {
+  // Bound memory
+  if (contents.length > MAX_SESSION_CONTENTS) {
+    contents.splice(0, contents.length - MAX_SESSION_CONTENTS);
+    while (contents.length > 0 && contents[0].role !== "user") contents.shift();
+  }
+  // Keep in-memory fallback in sync
+  sessionFallback.set(sessionId, contents);
+  if (sessionFallback.size > 50) {
+    const oldest = sessionFallback.keys().next().value;
+    if (oldest) sessionFallback.delete(oldest);
+  }
+  // Persist to DB (best-effort — don't block the response)
+  void admin.from("agent_sessions").upsert({
+    id: sessionId,
+    user_id: userId,
+    contents,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: "id" });
+}
+
+async function runAgentTurn(opts: {
+  sessionId: string;
+  userMessage: string;
+  admin: ReturnType<typeof createClient>;
+  userId: string;
+}): Promise<
+  | { ok: false; error: string }
+  | { ok: true; text: string; toolCalls: Array<{ name: string; args: Record<string, unknown> }>; requiresApproval: Array<{ name: string; args: Record<string, unknown> }> }
+> {
+  const { sessionId, userMessage, admin, userId } = opts;
+
+  let history = await loadSession(sessionId, admin);
+  history.push({ role: "user", parts: [{ text: userMessage }] });
+
+  const toolCalls: Array<{ name: string; args: Record<string, unknown> }> = [];
+  const requiresApproval: Array<{ name: string; args: Record<string, unknown> }> = [];
+  let agentText = "";
+
+  const MAX_STEPS = 6;
+  for (let step = 0; step < MAX_STEPS; step++) {
+    const r = await geminiRaw({
+      systemInstruction: { parts: [{ text: AGENT_INSTRUCTION }] },
+      contents: history,
+      tools: [{ functionDeclarations: TOOL_DECLARATIONS }],
+      generationConfig: { temperature: 0.7 },
+    });
+    if (!r.ok) return { ok: false, error: r.error };
+
+    const parts: Part[] = r.data?.candidates?.[0]?.content?.parts ?? [];
+    history.push({ role: "model", parts });
+
+    const responses: Part[] = [];
+    let hasToolCall = false;
+    for (const part of parts) {
+      if (part.text) agentText += part.text;
+      if (!part.functionCall) continue;
+      hasToolCall = true;
+      const name = part.functionCall.name;
+      const args = (part.functionCall.args ?? {}) as Record<string, unknown>;
+      toolCalls.push({ name, args });
+
+      if (WRITE_TOOLS.includes(name)) {
+        // Write tools never run without explicit user approval.
+        requiresApproval.push({ name, args });
+        void admin.from("agent_action_log").insert({
+          agent_run_id: sessionId,
+          action_type: name,
+          input: args,
+          output: {},
+          requires_approval: true,
+          status: "pending_approval",
+        });
+        responses.push({
+          functionResponse: {
+            name,
+            response: {
+              status: "pending_user_approval",
+              note: "The user must approve this action before it executes. Present the details and ask for approval.",
+            },
+          },
+        });
+      } else {
+        const result = await executeReadTool(name, args, admin);
+        void admin.from("agent_action_log").insert({
+          agent_run_id: sessionId,
+          action_type: name,
+          input: args,
+          output: result,
+          requires_approval: false,
+          status: "executed",
+        });
+        responses.push({ functionResponse: { name, response: { result } } });
+      }
+    }
+    if (!hasToolCall) break;
+    history.push({ role: "user", parts: responses });
+  }
+
+  // Bound memory + persist to DB
+  await saveSession(sessionId, userId, history, admin);
+
+  // Phase 2: Anti-fabrication — strip claims about write tools that are still pending approval.
+  // Write tools require user approval, so any claim that an action "succeeded" is fabricated.
+  const pendingWriteNames = requiresApproval.map((a) => a.name);
+  let sanitizedText = agentText;
+  if (pendingWriteNames.length > 0) {
+    // Replace common fabricated claim patterns
+    sanitizedText = sanitizedText
+      .replace(/(?:offer|message|proposal)\s+(?:sent|delivered)\s+to\s+.+?on\s+WhatsApp\s*[✓✔️✅]?/gi,
+        "Offer prepared — pending your approval to send")
+      .replace(/(?:transport|storage)\s+(?:booked|confirmed)\s*[✓✔️✅]?/gi,
+        "Booking prepared — pending your approval")
+      .replace(/WhatsApp\s+message\s+delivered\s*[✓✔️✅]?/gi,
+        "Message queued — awaiting delivery")
+      .replace(/read\s+receipt\s+received/gi,
+        "Awaiting read confirmation");
+  }
+
+  return { ok: true, text: sanitizedText, toolCalls, requiresApproval };
+}
+
+/** Execute a read-only tool (safe to run automatically). */
+async function executeReadTool(
+  name: string,
+  p: Record<string, unknown>,
+  admin: ReturnType<typeof createClient>,
+): Promise<unknown> {
+  switch (name) {
+    case "get_lot_details": {
+      const { data } = await admin.from("listings").select("*").eq("id", String(p.listingId ?? "")).maybeSingle();
+      return data ?? { error: "Listing not found" };
+    }
+    case "calculate_spoilage_risk": {
+      const hours = Number(p.hours ?? 0);
+      // Simplified spoilage model for agent use
+      const baseLoss = Math.min(0.45, hours * 0.004);
+      return { expectedLossPct: Math.round(baseLoss * 1000) / 1000, commodity: p.commodity, hours };
+    }
+    case "search_buyers": {
+      const { data } = await admin
+        .from("user_roles")
+        .select("id, user_id, profiles!inner(full_name, city), role_profiles(profile_json)")
+        .eq("role", "buyer")
+        .eq("status", "active")
+        .limit(10);
+      if (!data) return [];
+      return data.filter((r: any) => {
+        const pj = r.role_profiles?.[0]?.profile_json ?? r.role_profiles?.profile_json ?? {};
+        const commodities = pj.typicalCommodities ?? [];
+        const regions = pj.deliveryRegions ?? [];
+        const commodityMatch = !p.commodity || commodities.includes(p.commodity);
+        const regionMatch = !p.region || regions.includes(p.region);
+        return commodityMatch && regionMatch;
+      }).map((r: any) => {
+        const pj = r.role_profiles?.[0]?.profile_json ?? r.role_profiles?.profile_json ?? {};
+        return { userId: r.user_id, name: r.profiles?.full_name, city: r.profiles?.city, ...pj };
+      });
+    }
+    case "get_transport_quotes": {
+      const { data } = await admin
+        .from("user_roles")
+        .select("id, user_id, profiles!inner(full_name, city), role_profiles(profile_json)")
+        .eq("role", "transporter")
+        .eq("status", "active");
+      if (!data) return [];
+      const distances: Record<string, Record<string, number>> = {
+        Multan: { Multan: 15, Lahore: 350, Faisalabad: 250, Islamabad: 340, Karachi: 900 },
+        Lahore: { Lahore: 15, Multan: 350, Faisalabad: 180, Islamabad: 375, Karachi: 1210 },
+        Faisalabad: { Faisalabad: 15, Multan: 250, Lahore: 180, Islamabad: 300, Karachi: 1100 },
+        Islamabad: { Islamabad: 15, Multan: 340, Lahore: 375, Faisalabad: 300, Karachi: 1400 },
+        Karachi: { Karachi: 15, Multan: 900, Lahore: 1210, Faisalabad: 1100, Islamabad: 1400 },
+      };
+      const dist = distances[String(p.originCity)]?.[String(p.destCity)] ?? 350;
+      return data.map((r: any) => {
+        const pj = r.role_profiles?.[0]?.profile_json ?? r.role_profiles?.profile_json ?? {};
+        const ratePerKm = pj.ratePerKm ?? 30;
+        return {
+          userId: r.user_id, name: r.profiles?.full_name,
+          vehicleType: pj.vehicleType, cost: ratePerKm * dist, distKm: dist,
+          refrigerated: pj.refrigerated ?? false, onTimePct: pj.onTimePct ?? 75,
+        };
+      }).sort((a: any, b: any) => a.cost - b.cost);
+    }
+    case "get_storage_quotes": {
+      const { data } = await admin
+        .from("user_roles")
+        .select("id, user_id, profiles!inner(full_name, city), role_profiles(profile_json)")
+        .eq("role", "storage_provider")
+        .eq("status", "active");
+      if (!data) return [];
+      return data
+        .filter((r: any) => (r.profiles?.city ?? "") === p.city)
+        .map((r: any) => {
+          const pj = r.role_profiles?.[0]?.profile_json ?? r.role_profiles?.profile_json ?? {};
+          const perKg = pj.perKgPerDay ?? 3.5;
+          return { userId: r.user_id, name: r.profiles?.full_name, city: p.city, perKgPerDay: perKg, totalCost: perKg * Number(p.neededDays ?? 0), verified: pj.verified };
+        });
+    }
+    case "draft_offer_message": {
+      return {
+        draft: `Assalam-o-Alaikum! I have ${p.quantity} kg Grade ${p.grade} ${p.commodity} in ${p.location}. Asking PKR ${p.price}/kg. Can you take the full lot?`,
+        recipient: p.buyerName,
+      };
+    }
+    case "schedule_reminder": {
+      return { scheduled: true, at: p.at, message: p.message };
+    }
+    default:
+      return { error: `Unknown tool "${name}"` };
+  }
+}
+
+/** Execute a write tool — only ever called after explicit user approval. */
+async function executeWriteTool(
+  name: string,
+  p: Record<string, unknown>,
+  admin: ReturnType<typeof createClient>,
+  userId: string,
+): Promise<{ ok?: boolean; error?: string; [k: string]: unknown }> {
+  try {
+    switch (name) {
+      case "send_offer_message": {
+        const { data, error } = await admin.from("offers").insert({
+          listing_id: p.listingId, offering_user_id: userId,
+          price: p.price, quantity: p.quantity, message: p.message, status: "pending",
+        }).select("*").single();
+        if (error) return { error: error.message };
+        return { ok: true, offerId: data?.id };
+      }
+      case "book_transport": {
+        const { data, error } = await admin.from("transport_bookings").insert({
+          order_id: p.orderId, transporter_user_id: p.transporterUserId,
+          pickup_window: p.pickupWindow, dropoff_window: p.dropoffWindow,
+          rate: p.rate, status: "pending",
+        }).select("*").single();
+        if (error) return { error: error.message };
+        return { ok: true, bookingId: data?.id };
+      }
+      case "book_storage": {
+        const { data, error } = await admin.from("storage_bookings").insert({
+          order_id_or_lot_id: p.orderOrLotId, storage_user_id: p.storageUserId,
+          start_date: p.startDate, end_date: p.endDate,
+          rate: p.rate, status: "pending",
+        }).select("*").single();
+        if (error) return { error: error.message };
+        return { ok: true, bookingId: data?.id };
+      }
+      case "update_order_status": {
+        // Phase 1: Route through state machine instead of direct DB write
+        const result = await transitionOrder(admin, p.orderId as string, p.status as OrderStatus, {
+          source: "agent",
+          actorType: "agent",
+          actorId: userId,
+          previousStatus: p.previousStatus as string,
+        });
+        if (!result.ok) {
+          return { error: result.error, code: result.code };
+        }
+        return { updated: true, orderId: result.orderId, previousStatus: result.previousStatus, newStatus: result.newStatus };
+      }
+      default:
+        return { error: `Unknown write tool "${name}"` };
+    }
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Tool execution failed" };
+  }
+}

@@ -4,7 +4,7 @@
  * Scores lot-to-buyer_request pairs using a weighted formula:
  *   score = w1*priceFit + w2*quantityFit + w3*proximity + w4*reliability + w5*urgency
  */
-import { CITY_DISTANCES_KM, MATCH_WEIGHTS } from "@/data/market"
+import { CITY_DISTANCES_KM, MATCH_WEIGHTS } from "@/data/cropReference"
 import { fetchBuyerProfiles } from "@/lib/db"
 import type { Listing, Lot } from "@/types"
 

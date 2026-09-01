@@ -30,13 +30,10 @@ export default function LoginPage() {
     setError("")
     setGoogleLoading(true)
     try {
+      // Supabase OAuth redirects the browser to Google — no popup
       await signInWithGoogle()
-      navigate("/dashboard")
     } catch (err: any) {
-      if (err.code !== "auth/popup-closed-by-user") {
-        setError(err.message ?? "Google sign-in failed")
-      }
-    } finally {
+      setError(err.message ?? "Google sign-in failed")
       setGoogleLoading(false)
     }
   }
