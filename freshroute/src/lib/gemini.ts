@@ -87,7 +87,7 @@ async function callProxy(body: Record<string, unknown>): Promise<ProxyData> {
     "gemini-proxy",
     async () => {
       const started = Date.now()
-      const { data, error } = await supabase.functions.invoke("smart-action", { body })
+      const { data, error } = await supabase.functions.invoke("gemini-proxy", { body })
       const latencyMs = Date.now() - started
 
       // AI usage logging is handled server-side by the Edge Function
