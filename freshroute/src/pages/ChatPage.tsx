@@ -1,5 +1,4 @@
 import { useEffect } from "react"
-import { PhoneFrame } from "@/components/PhoneFrame"
 import { PriceTicker } from "@/components/PriceTicker"
 import { ChatHeader } from "@/components/ChatHeader"
 import { ChatBody } from "@/components/ChatBody"
@@ -69,20 +68,19 @@ export default function ChatPage() {
   }, [])
 
   return (
-    <div className="h-full w-full bg-background p-0 sm:p-6 lg:py-8">
-      <div className="mx-auto h-full max-w-[480px]">
-        <PhoneFrame>
-          <PriceTicker />
-          <ChatHeader />
-          <ChatBody />
-          <QuickReplies />
-          <ChatInput />
-
-          {sheet === "photos" && <PhotoSheet />}
-          {sheet === "settings" && <SettingsSheet />}
-          <AuditDrawer />
-        </PhoneFrame>
+    <div className="flex h-full w-full flex-col bg-background">
+      {/* Main chat workspace */}
+      <div className="mx-auto flex h-full w-full max-w-4xl flex-col overflow-hidden md:rounded-2xl md:border md:border-border md:bg-card md:shadow-xl">
+        <PriceTicker />
+        <ChatHeader />
+        <ChatBody />
+        <QuickReplies />
+        <ChatInput />
       </div>
+
+      {sheet === "photos" && <PhotoSheet />}
+      {sheet === "settings" && <SettingsSheet />}
+      <AuditDrawer />
     </div>
   )
 }

@@ -1,5 +1,4 @@
 import { useEffect } from "react"
-import { PhoneFrame } from "@/components/PhoneFrame"
 import { PriceTicker } from "@/components/PriceTicker"
 import { ChatHeader } from "@/components/ChatHeader"
 import { ChatBody } from "@/components/ChatBody"
@@ -19,17 +18,19 @@ function App() {
   }, [])
 
   return (
-    <PhoneFrame>
-      <PriceTicker />
-      <ChatHeader />
-      <ChatBody />
-      <QuickReplies />
-      <ChatInput />
+    <div className="flex h-screen w-full flex-col bg-background">
+      <div className="mx-auto flex h-full w-full max-w-4xl flex-col overflow-hidden md:rounded-2xl md:border md:border-border md:bg-card md:shadow-xl">
+        <PriceTicker />
+        <ChatHeader />
+        <ChatBody />
+        <QuickReplies />
+        <ChatInput />
 
-      {sheet === "photos" && <PhotoSheet />}
-      {sheet === "settings" && <SettingsSheet />}
-      <AuditDrawer />
-    </PhoneFrame>
+        {sheet === "photos" && <PhotoSheet />}
+        {sheet === "settings" && <SettingsSheet />}
+        <AuditDrawer />
+      </div>
+    </div>
   )
 }
 
